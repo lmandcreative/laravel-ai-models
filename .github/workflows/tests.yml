@@ -14,13 +14,14 @@ jobs:
       matrix:
         php: ['8.3', '8.4']
         laravel: ['12.*', '13.*']
+        ai: ['^0.7', '^0.10']
         include:
           - laravel: '12.*'
             testbench: '10.*'
           - laravel: '13.*'
             testbench: '11.*'
 
-    name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }}
+    name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }} — laravel/ai ${{ matrix.ai }}
 
     steps:
       - name: Checkout code
@@ -33,9 +34,9 @@ jobs:
           extensions: mbstring, dom, fileinfo, sqlite3
           coverage: none
 
-      - name: Set Laravel/Testbench version constraints
+      - name: Set Laravel/Testbench/AI version constraints
         run: |
-          composer require "illuminate/support:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
+          composer require "illuminate/support:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" "laravel/ai:${{ matrix.ai }}" --no-interaction --no-update
 
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction

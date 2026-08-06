@@ -9,7 +9,7 @@ configure twice.
 ## Requirements
 
 - PHP 8.3+
-- `laravel/ai` ^0.7
+- `laravel/ai` ^0.7, ^0.8, ^0.9 or ^0.10
 
 ## Install
 
