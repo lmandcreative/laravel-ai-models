@@ -1,0 +1,30 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, fileinfo, sqlite3
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction
+
+      - name: Check code style (Pint)
+        run: vendor/bin/pint --test
+
+      - name: Static analysis (PHPStan)
+        run: vendor/bin/phpstan analyse --error-format=github

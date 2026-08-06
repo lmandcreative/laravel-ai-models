@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a problem with lmsomeco/laravel-ai-models
+labels: [bug]
+body:
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: laravel-version
+    attributes:
+      label: Laravel version
+      placeholder: e.g. 12.5.0
+    validations:
+      required: true
+
+  - type: input
+    id: php-version
+    attributes:
+      label: PHP version
+      placeholder: e.g. 8.3.10
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: Provider affected
+      description: Which AI provider/Lab this relates to, if applicable (e.g. openai, anthropic, a database connector).
+      placeholder: e.g. openai
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps (or a code snippet) that reproduce the issue.
+      render: php
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full error message/stack trace if there is one.
+    validations:
+      required: true

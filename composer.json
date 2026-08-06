@@ -1,0 +1,64 @@
+{
+    "name": "lmsomeco/laravel-ai-models",
+    "description": "List and cache the currently-available models for each provider configured in the Laravel AI SDK.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["laravel", "ai", "laravel-ai", "models", "llm"],
+    "support": {
+        "issues": "https://github.com/lmandcreative/laravel-ai-models/issues",
+        "source": "https://github.com/lmandcreative/laravel-ai-models"
+    },
+    "require": {
+        "php": "^8.3",
+        "laravel/ai": "^0.7",
+        "illuminate/console": "^12.0|^13.0",
+        "illuminate/database": "^12.0|^13.0",
+        "illuminate/http": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.24",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "LmSomeco\\AiModels\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "LmSomeco\\AiModels\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "LmSomeco\\AiModels\\AiModelsServiceProvider"
+            ],
+            "aliases": {
+                "AiModels": "LmSomeco\\AiModels\\Facades\\AiModels"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "lint": "pint --test",
+        "lint:fix": "pint",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "check": [
+            "@lint",
+            "@analyse",
+            "@test"
+        ]
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

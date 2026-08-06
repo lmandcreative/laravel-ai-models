@@ -1,0 +1,21 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 8
+
+    paths:
+        - src
+        - config
+        - database
+
+    tmpDir: .phpstan
+
+    ignoreErrors:
+        # Larastan's env()-outside-of-config check resolves the app's config
+        # directory via config_path(), which points at a bootstrapped app's
+        # config/ dir rather than this package's own config/ai-models.php.
+        # It's a false positive for a package (as opposed to an application).
+        -
+            identifier: larastan.noEnvCallsOutsideOfConfig
+            path: config/ai-models.php

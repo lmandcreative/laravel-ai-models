@@ -1,0 +1,44 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4']
+        laravel: ['12.*', '13.*']
+        include:
+          - laravel: '12.*'
+            testbench: '10.*'
+          - laravel: '13.*'
+            testbench: '11.*'
+
+    name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, dom, fileinfo, sqlite3
+          coverage: none
+
+      - name: Set Laravel/Testbench version constraints
+        run: |
+          composer require "illuminate/support:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction
+
+      - name: Run tests
+        run: vendor/bin/pest
