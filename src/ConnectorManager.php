@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace LmSomeco\AiModels;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
+use LmSomeco\AiModels\Contracts\Connector;
 use LmSomeco\AiModels\Data\AiModel;
 use LmSomeco\AiModels\Models\AiConnector;
 
 /**
- * Resolves the active AiConnector record and bridges it to the AI SDK.
+ * Resolves the active connector record and bridges it to the AI SDK.
  *
  * Typical usage:
  *
@@ -21,13 +23,14 @@ use LmSomeco\AiModels\Models\AiConnector;
  *   // Or use models() to list available models directly:
  *   $models = $manager->models($connector);
  *
- * To substitute your own Eloquent model, set ai-models.connectors.model in
- * your config (or bind it in the container). The class must extend AiConnector.
+ * To substitute your own Eloquent model, set ai-models.connectors.model to any
+ * Eloquent model implementing Contracts\Connector — extend AiConnector, use
+ * Concerns\IsConnector, or implement the contract's methods yourself.
  */
 class ConnectorManager
 {
     /**
-     * @param  class-string<AiConnector>  $connectorModel
+     * @param  class-string<Model&Connector>  $connectorModel
      */
     public function __construct(
         protected ModelRegistry $registry,
@@ -35,26 +38,32 @@ class ConnectorManager
     ) {}
 
     /**
-     * Resolve the AiConnector to use.
+     * Resolve the connector to use.
      *
-     * When $id is provided the connector with that UUID is returned (or
-     * ModelNotFoundException is thrown if it does not exist). Otherwise the
-     * default active connector is returned, falling back to the first active
-     * connector by sort order. Throws ModelNotFoundException if none is found.
+     * When $id is provided the connector with that identifier is returned (or
+     * ModelNotFoundException is thrown if it does not exist). Otherwise
+     * selection is delegated to Connector::defaultConnector() — for the
+     * shipped AiConnector: the active default, falling back to the first
+     * active connector by sort order. Throws ModelNotFoundException if none
+     * is found.
      */
-    public function resolve(?string $id = null): AiConnector
+    public function resolve(?string $id = null): Connector
     {
         $model = $this->connectorModel;
 
         if ($id !== null) {
-            /** @var AiConnector */
-            return $model::findOrFail($id);
+            $connector = $model::findConnector($id);
+
+            if (! $connector instanceof Connector) {
+                throw (new ModelNotFoundException)->setModel($model, [$id]);
+            }
+
+            return $connector;
         }
 
-        $connector = $model::active()->default()->ordered()->first()
-            ?? $model::active()->ordered()->first();
+        $connector = $model::defaultConnector();
 
-        if (! $connector instanceof AiConnector) {
+        if (! $connector instanceof Connector) {
             throw new ModelNotFoundException('No active AI connector is configured.');
         }
 
@@ -69,15 +78,15 @@ class ConnectorManager
      * the decrypted key is injected at runtime rather than stored in .env.
      * The config mutation is process-local and lasts for the current request.
      */
-    public function configure(AiConnector $connector): string
+    public function configure(Connector $connector): string
     {
-        $providerKey = 'db-'.$connector->id;
+        $providerKey = 'db-'.$connector->getConnectorId();
 
         config([
             "ai.providers.{$providerKey}" => array_filter([
-                'driver' => $connector->provider,
-                'key' => $connector->api_key,
-                'url' => $connector->base_url,
+                'driver' => $connector->getProvider(),
+                'key' => $connector->getApiKey(),
+                'url' => $connector->getBaseUrl(),
             ]),
         ]);
 
@@ -92,7 +101,7 @@ class ConnectorManager
      *
      * @return Collection<int, AiModel>
      */
-    public function models(AiConnector $connector, bool $fresh = false): Collection
+    public function models(Connector $connector, bool $fresh = false): Collection
     {
         return $this->registry->connector($connector, $fresh);
     }

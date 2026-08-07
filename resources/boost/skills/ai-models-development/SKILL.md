@@ -29,10 +29,13 @@ ProviderResolver (interface) implemented by:
   |     `-- OpenRouterResolver   overrides configured()/mapModel()
   `-- AnthropicResolver          bespoke: x-api-key header, pagination
 
-ConnectorManager            optional (ai-models.connectors.enabled), wraps
-  |                         an AiConnector Eloquent model.
-  |-- resolve()             find the active/default AiConnector.
-  |-- configure()           inject it into config('ai.providers.db-{uuid}').
+ConnectorManager            wraps any Eloquent model implementing
+  |                         Contracts\Connector (default: Models\AiConnector;
+  |                         Concerns\IsConnector supplies the contract for
+  |                         standard columns). Migrations gated behind
+  |                         ai-models.connectors.enabled.
+  |-- resolve()             Connector::findConnector() / defaultConnector().
+  |-- configure()           inject it into config('ai.providers.db-{id}').
   `-- models()              -> ModelRegistry::connector() -> driver().
 
 Console\ListModelsCommand   `php artisan ai:models` — thin wrapper over
@@ -109,7 +112,7 @@ Before committing, run the full gate: `composer check` (lint, then phpstan
 | `ai-models.cache.prefix`          | —                          | `"ai-models"` |
 | `ai-models.timeout`               | `AI_MODELS_TIMEOUT`        | `15` |
 | `ai-models.connectors.enabled`    | `AI_MODELS_CONNECTORS`     | `false` |
-| `ai-models.connectors.model`      | —                          | `LmSomeco\AiModels\Models\AiConnector::class` |
+| `ai-models.connectors.model`      | —                          | `LmSomeco\AiModels\Models\AiConnector::class` — any Eloquent model implementing `Contracts\Connector` |
 | `ai-models.resolvers`             | —                          | see `config/ai-models.php` |
 
 Full behavioral reference: `docs/usage.md`, `docs/caching.md`,

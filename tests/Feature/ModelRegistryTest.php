@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Laravel\Ai\Enums\Lab;
 use LmSomeco\AiModels\ModelRegistry;
@@ -82,6 +83,46 @@ it('caches per provider and re-fetches only when refreshed', function () {
 
     registry()->provider('openai', fresh: true);
     Http::assertSentCount(2);
+});
+
+it('discards a cached payload whose class no longer exists and refetches', function () {
+    config()->set('ai.providers.openai', [
+        'driver' => 'openai',
+        'key' => 'sk-test',
+        'url' => 'https://api.openai.com/v1',
+    ]);
+    config()->set('ai-models.cache.ttl', 3600);
+
+    Http::fake(['api.openai.com/*' => Http::response(['data' => [['id' => 'gpt-4o']]])]);
+
+    // What unserialize() yields when a cache entry was written by code (an
+    // older deploy, another app on the same store) whose class we can't load.
+    Cache::put('ai-models:openai', unserialize('O:19:"Legacy\ModelListing":0:{}'), 3600);
+
+    $models = registry()->provider('openai');
+
+    expect($models)->toHaveCount(1)
+        ->and($models->first()->id)->toBe('gpt-4o');
+
+    // The healed entry is served from cache on the next call.
+    registry()->provider('openai');
+    Http::assertSentCount(1);
+});
+
+it('discards a cached collection containing incomplete objects and refetches', function () {
+    config()->set('ai.providers.openai', [
+        'driver' => 'openai',
+        'key' => 'sk-test',
+        'url' => 'https://api.openai.com/v1',
+    ]);
+    config()->set('ai-models.cache.ttl', 3600);
+
+    Http::fake(['api.openai.com/*' => Http::response(['data' => [['id' => 'gpt-4o']]])]);
+
+    Cache::put('ai-models:openai', collect([unserialize('O:10:"Legacy\Dto":0:{}')]), 3600);
+
+    expect(registry()->provider('openai')->pluck('id')->all())->toBe(['gpt-4o']);
+    Http::assertSentCount(1);
 });
 
 it('throws for a provider that is not in config', function () {

@@ -12,9 +12,9 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
 use Laravel\Ai\Enums\Lab;
+use LmSomeco\AiModels\Contracts\Connector;
 use LmSomeco\AiModels\Contracts\ProviderResolver;
 use LmSomeco\AiModels\Data\AiModel;
-use LmSomeco\AiModels\Models\AiConnector;
 
 class ModelRegistry
 {
@@ -106,7 +106,7 @@ class ModelRegistry
      * Resolve models for an ad-hoc connector that is not declared in config/ai.php.
      *
      * Pass the underlying driver (a Lab) plus its credentials. Caching is opt-in:
-     * provide a $cacheKey (e.g. "connector:{$connector->id}") to cache the result.
+     * provide a $cacheKey (e.g. "connector:{$connector->getConnectorId()}") to cache the result.
      *
      * @param  array<string, mixed>  $config  e.g. ['key' => '...', 'url' => '...']
      * @return Collection<int, AiModel>
@@ -137,22 +137,22 @@ class ModelRegistry
     }
 
     /**
-     * Resolve models for a database-driven AiConnector instance.
+     * Resolve models for a database-driven connector instance.
      *
      * Uses a stable per-connector cache key so repeated calls within the same
      * request hit the cache. Pass $fresh = true to bypass it.
      *
      * @return Collection<int, AiModel>
      */
-    public function connector(AiConnector $connector, bool $fresh = false): Collection
+    public function connector(Connector $connector, bool $fresh = false): Collection
     {
         return $this->driver(
-            driver: $connector->provider,
+            driver: $connector->getProvider(),
             config: array_filter([
-                'key' => $connector->api_key,
-                'url' => $connector->base_url,
+                'key' => $connector->getApiKey(),
+                'url' => $connector->getBaseUrl(),
             ]),
-            cacheKey: 'connector:'.$connector->id,
+            cacheKey: 'connector:'.$connector->getConnectorId(),
             fresh: $fresh,
         );
     }
@@ -217,20 +217,52 @@ class ModelRegistry
     }
 
     /**
+     * Read a model collection from the cache, refetching (and re-caching) when
+     * the entry is missing, bypassed via $fresh, or not a usable payload.
+     *
      * @param  Closure(): Collection<int, AiModel>  $callback
      * @return Collection<int, AiModel>
      */
     protected function remember(string $key, bool $fresh, Closure $callback): Collection
     {
-        if ($fresh) {
-            $this->store()->forget($key);
+        $store = $this->store();
+        $cached = $fresh ? null : $store->get($key);
+
+        if ($this->usable($cached)) {
+            return $cached;
         }
+
+        // An unusable payload is stale or foreign — e.g. serialized by a
+        // previous deploy whose classes no longer exist, or written under a
+        // colliding key by other code sharing the cache. Drop it before
+        // refetching so it cannot outlive a refetch that throws.
+        if ($fresh || $cached !== null) {
+            $store->forget($key);
+        }
+
+        $models = $callback();
 
         $ttl = $this->config->get('ai-models.cache.ttl');
 
-        return $ttl === null
-            ? $this->store()->rememberForever($key, $callback)
-            : $this->store()->remember($key, (int) $ttl, $callback);
+        $ttl === null
+            ? $store->forever($key, $models)
+            : $store->put($key, $models, (int) $ttl);
+
+        return $models;
+    }
+
+    /**
+     * Whether a cached payload can be returned as-is. Anything that is not a
+     * Collection of intact objects — notably the __PHP_Incomplete_Class
+     * instances unserialize() produces when the cache holds objects of a class
+     * this deployment cannot load — is treated as a cache miss.
+     *
+     * @phpstan-assert-if-true Collection<int, AiModel> $cached
+     */
+    protected function usable(mixed $cached): bool
+    {
+        return $cached instanceof Collection
+            && ! $cached->contains(static fn ($model): bool => $model instanceof \__PHP_Incomplete_Class);
     }
 
     protected function store(): Repository

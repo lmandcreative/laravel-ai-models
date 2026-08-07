@@ -25,9 +25,13 @@ not introduce a second place to store provider credentials.
   all* — never for one that's simply missing a key.
 - Every file uses `declare(strict_types=1);` and typed properties/returns.
   Match that in new code.
-- Database connectors (`LmSomeco\AiModels\Models\AiConnector`) are optional,
-  gated behind `ai-models.connectors.enabled` (`AI_MODELS_CONNECTORS`). Its
-  `api_key` column is cast `encrypted` — never log or dump it raw.
+- Database connectors are optional, gated behind
+  `ai-models.connectors.enabled` (`AI_MODELS_CONNECTORS`). ConnectorManager
+  works with any Eloquent model implementing
+  `LmSomeco\AiModels\Contracts\Connector` (set `ai-models.connectors.model`);
+  the shipped `LmSomeco\AiModels\Models\AiConnector` casts its `api_key`
+  column `encrypted` — never log or dump it raw, and custom connector models
+  must supply their own encrypted-key handling.
 
 ### Examples
 

@@ -47,8 +47,11 @@ return [
     |
     |   php artisan vendor:publish --tag=ai-models-migrations
     |
-    | Override "model" to swap in your own Eloquent class (e.g. if your app
-    | already has an AiConnector model with extra relationships).
+    | Override "model" with any Eloquent model implementing the
+    | LmSomeco\AiModels\Contracts\Connector contract: extend the shipped
+    | AiConnector, use the LmSomeco\AiModels\Concerns\IsConnector trait when
+    | your columns match the standard layout, or implement the contract's
+    | getters and finders yourself for a custom schema.
     |
     */
 

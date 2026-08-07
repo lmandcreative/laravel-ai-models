@@ -22,6 +22,42 @@ Resolvers are built through the container
 constructor arguments beyond the two described below can be any container
 dependency.
 
+## The `Connector` contract
+
+Database connectors are typed against `LmSomeco\AiModels\Contracts\Connector`
+rather than the shipped `AiConnector` model, so any Eloquent model can act as
+a connector:
+
+```php
+interface Connector
+{
+    public static function findConnector(string $id): ?static;
+
+    public static function defaultConnector(): ?static;
+
+    public function getConnectorId(): string;
+
+    public function getProvider(): string;
+
+    public function getApiKey(): string;
+
+    public function getBaseUrl(): ?string;
+}
+```
+
+When your model's columns match the standard `ai_connectors` layout, the
+whole contract is one trait away:
+
+```php
+class MyConnector extends Model implements Connector
+{
+    use \LmSomeco\AiModels\Concerns\IsConnector;
+}
+```
+
+See [Database connectors](database-connectors.md) for the full
+bring-your-own-model guide.
+
 ## Registering a resolver
 
 Map a `Lab` case to your resolver class in `config/ai-models.php`:

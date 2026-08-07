@@ -7,8 +7,12 @@ namespace LmSomeco\AiModels;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\ServiceProvider;
+use InvalidArgumentException;
+use LmSomeco\AiModels\Concerns\IsConnector;
 use LmSomeco\AiModels\Console\ListModelsCommand;
+use LmSomeco\AiModels\Contracts\Connector;
 use LmSomeco\AiModels\Models\AiConnector;
 
 class AiModelsServiceProvider extends ServiceProvider
@@ -25,20 +29,33 @@ class AiModelsServiceProvider extends ServiceProvider
             );
         });
 
-        if ($this->app->make(Config::class)->get('ai-models.connectors.enabled', false)) {
-            $this->app->singleton(ConnectorManager::class, function (Container $app): ConnectorManager {
-                /** @var class-string<AiConnector> $model */
-                $model = $app->make(Config::class)->get(
-                    'ai-models.connectors.model',
-                    AiConnector::class,
-                );
+        // Registered unconditionally (the singleton is lazy): gating this on
+        // connectors.enabled would let the container fall back to reflection
+        // auto-wiring, silently ignoring the configured model class and this
+        // validation. Only the migrations are gated on the flag.
+        $this->app->singleton(ConnectorManager::class, function (Container $app): ConnectorManager {
+            $model = $app->make(Config::class)->get(
+                'ai-models.connectors.model',
+                AiConnector::class,
+            );
 
-                return new ConnectorManager(
-                    registry: $app->make(ModelRegistry::class),
-                    connectorModel: $model,
-                );
-            });
-        }
+            if (! is_string($model) || ! is_a($model, Model::class, true) || ! is_a($model, Connector::class, true)) {
+                throw new InvalidArgumentException(sprintf(
+                    'The ai-models.connectors.model config value [%s] must be an Eloquent model implementing [%s]. '
+                    .'Extend [%s], add the [%s] trait to a model with the standard connector columns, '
+                    .'or implement the contract yourself.',
+                    is_string($model) ? $model : get_debug_type($model),
+                    Connector::class,
+                    AiConnector::class,
+                    IsConnector::class,
+                ));
+            }
+
+            return new ConnectorManager(
+                registry: $app->make(ModelRegistry::class),
+                connectorModel: $model,
+            );
+        });
     }
 
     public function boot(): void

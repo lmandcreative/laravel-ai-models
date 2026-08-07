@@ -7,15 +7,17 @@ namespace LmSomeco\AiModels\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use LmSomeco\AiModels\Concerns\IsConnector;
+use LmSomeco\AiModels\Contracts\Connector;
 
 /**
  * A database-driven AI provider configuration.
  *
- * Applications can extend this class to add relationships or override the table
- * name, then bind the subclass in the service container so ConnectorManager
- * resolves it automatically:
- *
- *   $this->app->bind(\LmSomeco\AiModels\Models\AiConnector::class, MyConnector::class);
+ * Applications can substitute their own model by pointing the
+ * ai-models.connectors.model config key at any Eloquent model implementing
+ * Contracts\Connector: extend this class, use Concerns\IsConnector on a model
+ * whose columns match the standard layout, or implement the contract's
+ * methods yourself for a custom schema.
  *
  * @property string $id
  * @property string $name
@@ -28,9 +30,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property bool $is_default
  * @property int $sort_order
  */
-class AiConnector extends Model
+class AiConnector extends Model implements Connector
 {
-    use HasUuids;
+    use HasUuids, IsConnector;
 
     protected $fillable = [
         'name',
