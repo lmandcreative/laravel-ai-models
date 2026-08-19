@@ -37,6 +37,7 @@ class OpenRouterResolver extends OpenAiCompatibleResolver
                 ? (int) $model['top_provider']['max_completion_tokens']
                 : null,
             modalities: $model['architecture']['input_modalities'] ?? [],
+            outputModalities: $model['architecture']['output_modalities'] ?? [],
             raw: $model,
         );
     }

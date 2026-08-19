@@ -91,8 +91,30 @@ same way regardless of provider:
 | `contextWindow`        | `?int`                    | Only populated where the provider exposes it (e.g. OpenRouter). |
 | `maxOutputTokens`      | `?int`                    | Same. |
 | `modalities`           | `list<string>`            | Input modalities, e.g. `["text", "image"]`. Empty array if unknown. |
+| `outputModalities`     | `list<string>`            | Output modalities the model can generate. Empty array if unknown. |
 | `createdAt`            | `?DateTimeImmutable`      | When the provider reports it. |
 | `raw`                  | `array<string, mixed>`    | The untouched payload returned by the provider. |
+
+`AiModel::accepts(string $modality)` and `AiModel::generates(string $modality)`
+make modality checks readable. Registry methods return standard Laravel
+collections, so models can be filtered by these helpers or any other property:
+
+```php
+use LmSomeco\AiModels\Data\AiModel;
+
+$textOnly = AiModels::all()->filter(
+    fn (AiModel $model): bool => $model->outputModalities === ['text'],
+);
+
+$withoutKnownImageOrAudioGeneration = AiModels::all()->reject(
+    fn (AiModel $model): bool => $model->generates('image') || $model->generates('audio'),
+);
+```
+
+An empty modality list means the provider did not report this metadata. The
+strict first example excludes unknown models; the second keeps them and only
+excludes models known to generate image or audio output. Currently OpenRouter
+reports both input and output modalities; other model-listing APIs may not.
 
 `AiModel::toArray()` returns a snake_case array of every field **except**
 `raw` (dropped to keep `--json` output and API responses compact) — see

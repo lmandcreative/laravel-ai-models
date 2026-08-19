@@ -115,7 +115,7 @@ implementing the interface from scratch. Override just what differs:
 `OpenRouterResolver` is a good example: it overrides `configured()` (the
 listing endpoint is public, no key required) and `mapModel()` (to pull in
 `context_length`, `top_provider.max_completion_tokens` and
-`architecture.input_modalities`).
+`architecture.input_modalities` / `architecture.output_modalities`).
 
 If the provider's shape differs more fundamentally (auth headers, pagination,
 response envelope), implement `ProviderResolver` directly — see

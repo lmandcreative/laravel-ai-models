@@ -5,6 +5,19 @@ All notable changes to `lmsomeco/laravel-ai-models` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-08-19
+
+### Added
+
+- `AiModel::$outputModalities`, plus `accepts()` and `generates()` helpers, so
+  applications can filter returned collections by input/output capability.
+- OpenRouter output modality mapping from `architecture.output_modalities`.
+
+### Changed
+
+- Cached model collections from older releases are refetched when they do not
+  contain the newly normalized output modality property.
+
 ## [1.0.2] - 2026-08-07
 
 ### Added

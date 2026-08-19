@@ -49,8 +49,21 @@ $model = AiModels::provider(Lab::OpenAI)->firstWhere('id', 'gpt-4o');
 $model->provider;       // Laravel\Ai\Enums\Lab::OpenAI
 $model->id;             // 'gpt-4o'
 $model->contextWindow;  // int|null
+$model->modalities;     // input modalities; [] when unknown
+$model->outputModalities; // output modalities; [] when unknown
 $model->raw;            // untouched provider payload
 ```
+
+Registry methods return Laravel collections, so model properties and modality
+helpers can be used directly when filtering:
+
+```php
+$models = AiModels::all()->filter(
+    fn ($model) => $model->outputModalities === ['text'],
+);
+```
+
+This strict form also excludes models whose output capabilities are unknown.
 
 The `ModelRegistry` is resolvable from the container if you prefer DI over the
 facade.

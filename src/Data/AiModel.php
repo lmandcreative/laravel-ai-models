@@ -18,6 +18,7 @@ final readonly class AiModel implements Arrayable
     /**
      * @param  list<string>  $modalities  Input modalities the model accepts (e.g. ["text", "image"]).
      * @param  array<string, mixed>  $raw  The untouched payload returned by the provider.
+     * @param  list<string>  $outputModalities  Output modalities the model can generate (e.g. ["text", "image"]).
      */
     public function __construct(
         public Lab $provider,
@@ -28,7 +29,18 @@ final readonly class AiModel implements Arrayable
         public array $modalities = [],
         public ?DateTimeImmutable $createdAt = null,
         public array $raw = [],
+        public array $outputModalities = [],
     ) {}
+
+    public function accepts(string $modality): bool
+    {
+        return in_array($modality, $this->modalities, true);
+    }
+
+    public function generates(string $modality): bool
+    {
+        return in_array($modality, $this->outputModalities, true);
+    }
 
     /**
      * @return array<string, mixed>
@@ -42,6 +54,7 @@ final readonly class AiModel implements Arrayable
             'context_window' => $this->contextWindow,
             'max_output_tokens' => $this->maxOutputTokens,
             'modalities' => $this->modalities,
+            'output_modalities' => $this->outputModalities,
             'created_at' => $this->createdAt?->format(DATE_ATOM),
         ];
     }

@@ -15,7 +15,10 @@ it('maps OpenRouter rich metadata onto the model', function () {
                     'name' => 'OpenAI: GPT-4o',
                     'context_length' => 128000,
                     'top_provider' => ['max_completion_tokens' => 16384],
-                    'architecture' => ['input_modalities' => ['text', 'image']],
+                    'architecture' => [
+                        'input_modalities' => ['text', 'image'],
+                        'output_modalities' => ['text'],
+                    ],
                 ],
             ],
         ]),
@@ -30,7 +33,8 @@ it('maps OpenRouter rich metadata onto the model', function () {
         ->and($model->name)->toBe('OpenAI: GPT-4o')
         ->and($model->contextWindow)->toBe(128000)
         ->and($model->maxOutputTokens)->toBe(16384)
-        ->and($model->modalities)->toBe(['text', 'image']);
+        ->and($model->modalities)->toBe(['text', 'image'])
+        ->and($model->outputModalities)->toBe(['text']);
 });
 
 it('is configured without an API key because listing is public', function () {

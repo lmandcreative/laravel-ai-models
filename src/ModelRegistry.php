@@ -15,6 +15,7 @@ use Laravel\Ai\Enums\Lab;
 use LmSomeco\AiModels\Contracts\Connector;
 use LmSomeco\AiModels\Contracts\ProviderResolver;
 use LmSomeco\AiModels\Data\AiModel;
+use ReflectionProperty;
 
 class ModelRegistry
 {
@@ -261,8 +262,11 @@ class ModelRegistry
      */
     protected function usable(mixed $cached): bool
     {
+        $outputModalities = new ReflectionProperty(AiModel::class, 'outputModalities');
+
         return $cached instanceof Collection
-            && ! $cached->contains(static fn ($model): bool => $model instanceof \__PHP_Incomplete_Class);
+            && ! $cached->contains(static fn ($model): bool => ! $model instanceof AiModel
+                || ! $outputModalities->isInitialized($model));
     }
 
     protected function store(): Repository

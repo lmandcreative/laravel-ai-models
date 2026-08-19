@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Laravel\Ai\Enums\Lab;
+use LmSomeco\AiModels\Data\AiModel;
 use LmSomeco\AiModels\ModelRegistry;
 
 function registry(): ModelRegistry
@@ -120,6 +121,25 @@ it('discards a cached collection containing incomplete objects and refetches', f
     Http::fake(['api.openai.com/*' => Http::response(['data' => [['id' => 'gpt-4o']]])]);
 
     Cache::put('ai-models:openai', collect([unserialize('O:10:"Legacy\Dto":0:{}')]), 3600);
+
+    expect(registry()->provider('openai')->pluck('id')->all())->toBe(['gpt-4o']);
+    Http::assertSentCount(1);
+});
+
+it('discards cached models created before output modalities were available', function () {
+    config()->set('ai.providers.openai', [
+        'driver' => 'openai',
+        'key' => 'sk-test',
+        'url' => 'https://api.openai.com/v1',
+    ]);
+    config()->set('ai-models.cache.ttl', 3600);
+
+    Http::fake(['api.openai.com/*' => Http::response(['data' => [['id' => 'gpt-4o']]])]);
+
+    $class = AiModel::class;
+    $legacyModel = unserialize(sprintf('O:%d:"%s":0:{}', strlen($class), $class));
+
+    Cache::put('ai-models:openai', collect([$legacyModel]), 3600);
 
     expect(registry()->provider('openai')->pluck('id')->all())->toBe(['gpt-4o']);
     Http::assertSentCount(1);
