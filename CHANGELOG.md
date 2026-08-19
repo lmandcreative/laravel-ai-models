@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AiModel::$outputModalities`, plus `accepts()` and `generates()` helpers, so
   applications can filter returned collections by input/output capability.
 - OpenRouter output modality mapping from `architecture.output_modalities`.
+- Anthropic modality, context-window, and output-token mapping from its current
+  model-list response, with documented text/image defaults for older payloads.
+- `OpenAiResolver`, which enriches official OpenAI model families with their
+  documented modalities because OpenAI's model-list response omits them.
 
 ### Changed
 

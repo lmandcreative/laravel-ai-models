@@ -72,7 +72,7 @@ facade.
 
 | Provider (`Lab`)        | Resolver                    | Status |
 |--------------------------|-----------------------------|--------|
-| `OpenAI`                 | `OpenAiCompatibleResolver`  | ✅ live |
+| `OpenAI`                 | `OpenAiResolver`            | ✅ live (catalog-enriched modalities) |
 | `Groq`                   | `OpenAiCompatibleResolver`  | ✅ live |
 | `Mistral`                | `OpenAiCompatibleResolver`  | ✅ live |
 | `DeepSeek`               | `OpenAiCompatibleResolver`  | ✅ live |

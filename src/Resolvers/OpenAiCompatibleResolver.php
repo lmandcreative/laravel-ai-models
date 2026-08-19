@@ -16,8 +16,9 @@ use LmSomeco\AiModels\Data\AiModel;
  * Handles any provider that exposes an OpenAI-style `GET /models` endpoint
  * returning `{ "data": [ { "id": "..." }, ... ] }` with Bearer auth.
  *
- * Covers OpenAI, Groq, Mistral, DeepSeek and xAI out of the box — they differ
- * only by base URL, which comes from config. No subclass needed for those.
+ * Covers Groq, Mistral, DeepSeek and xAI out of the box — they differ only by
+ * base URL, which comes from config. OpenAI uses a small subclass to enrich
+ * the sparse response with its documented model-family modalities.
  */
 class OpenAiCompatibleResolver implements ProviderResolver
 {

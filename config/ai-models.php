@@ -6,6 +6,7 @@ use Laravel\Ai\Enums\Lab;
 use LmSomeco\AiModels\Models\AiConnector;
 use LmSomeco\AiModels\Resolvers\AnthropicResolver;
 use LmSomeco\AiModels\Resolvers\OpenAiCompatibleResolver;
+use LmSomeco\AiModels\Resolvers\OpenAiResolver;
 use LmSomeco\AiModels\Resolvers\OpenRouterResolver;
 
 return [
@@ -76,7 +77,7 @@ return [
     'resolvers' => [
 
         Lab::OpenAI->value => [
-            'driver' => OpenAiCompatibleResolver::class,
+            'driver' => OpenAiResolver::class,
         ],
 
         Lab::Groq->value => [

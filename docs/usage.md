@@ -111,10 +111,19 @@ $withoutKnownImageOrAudioGeneration = AiModels::all()->reject(
 );
 ```
 
-An empty modality list means the provider did not report this metadata. The
-strict first example excludes unknown models; the second keeps them and only
-excludes models known to generate image or audio output. Currently OpenRouter
-reports both input and output modalities; other model-listing APIs may not.
+An empty modality list means the capability is unknown. The strict first
+example excludes unknown models; the second keeps them and only excludes models
+known to generate image or audio output.
+
+- OpenRouter modalities come directly from `architecture.input_modalities` and
+  `architecture.output_modalities` in its model-list response.
+- Anthropic input modalities, context size, and output-token limit come from
+  its current model-list metadata. Text output and the fallback for older
+  responses follow Anthropic's documented capabilities for current Claude
+  models.
+- OpenAI's model-list API does not return capabilities. The OpenAI resolver
+  derives modalities from documented official model families, including
+  snapshots and fine-tuned model IDs. Unrecognized custom IDs remain unknown.
 
 `AiModel::toArray()` returns a snake_case array of every field **except**
 `raw` (dropped to keep `--json` output and API responses compact) — see

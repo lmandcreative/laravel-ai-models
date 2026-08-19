@@ -25,8 +25,9 @@ ModelRegistry              orchestrates everything; resolvable via the
   |                        then container->make()s the resolver class.
   |
 ProviderResolver (interface) implemented by:
-  |-- OpenAiCompatibleResolver   OpenAI, Groq, Mistral, DeepSeek, xAI
-  |     `-- OpenRouterResolver   overrides configured()/mapModel()
+  |-- OpenAiCompatibleResolver   Groq, Mistral, DeepSeek, xAI
+  |     |-- OpenAiResolver       enriches documented OpenAI modalities
+  |     `-- OpenRouterResolver   maps rich API metadata
   `-- AnthropicResolver          bespoke: x-api-key header, pagination
 
 ConnectorManager            wraps any Eloquent model implementing

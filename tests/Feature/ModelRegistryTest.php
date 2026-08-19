@@ -26,7 +26,9 @@ it('lists models for a statically configured provider', function () {
 
     expect($models)->toHaveCount(1)
         ->and($models->first()->id)->toBe('gpt-4o')
-        ->and($models->first()->provider)->toBe(Lab::OpenAI);
+        ->and($models->first()->provider)->toBe(Lab::OpenAI)
+        ->and($models->first()->modalities)->toBe(['text', 'image'])
+        ->and($models->first()->outputModalities)->toBe(['text']);
 });
 
 it('accepts a Lab as well as a provider name', function () {

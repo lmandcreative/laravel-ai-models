@@ -64,10 +64,18 @@ class AnthropicResolver implements ProviderResolver
                     provider: $this->provider(),
                     id: (string) $model['id'],
                     name: $model['display_name'] ?? (string) $model['id'],
+                    contextWindow: isset($model['max_input_tokens'])
+                        ? (int) $model['max_input_tokens']
+                        : null,
+                    maxOutputTokens: isset($model['max_tokens'])
+                        ? (int) $model['max_tokens']
+                        : null,
+                    modalities: $this->modalities($model),
                     createdAt: isset($model['created_at'])
                         ? new DateTimeImmutable((string) $model['created_at'])
                         : null,
                     raw: $model,
+                    outputModalities: ['text'],
                 ));
             }
 
@@ -76,5 +84,22 @@ class AnthropicResolver implements ProviderResolver
         } while ($hasMore && filled($query['after_id']));
 
         return $models->sortBy('id')->values();
+    }
+
+    /**
+     * @param  array<string, mixed>  $model
+     * @return list<string>
+     */
+    protected function modalities(array $model): array
+    {
+        $imageInput = $model['capabilities']['image_input']['supported'] ?? null;
+
+        if ($imageInput === false) {
+            return ['text'];
+        }
+
+        // Anthropic documents image input for all current Claude models. Use
+        // that as the fallback for older API responses without capabilities.
+        return ['text', 'image'];
     }
 }

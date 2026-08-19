@@ -117,6 +117,12 @@ listing endpoint is public, no key required) and `mapModel()` (to pull in
 `context_length`, `top_provider.max_completion_tokens` and
 `architecture.input_modalities` / `architecture.output_modalities`).
 
+`OpenAiResolver` is the OpenAI-specific subclass. Since OpenAI's `/models`
+payload has no capability fields, it enriches official model families with
+their documented input and output modalities while leaving unknown IDs empty.
+Other OpenAI-compatible providers continue to use the base resolver without
+these OpenAI-specific assumptions.
+
 If the provider's shape differs more fundamentally (auth headers, pagination,
 response envelope), implement `ProviderResolver` directly — see
 `AnthropicResolver` for an example with `x-api-key`/`anthropic-version`

@@ -10,7 +10,14 @@ it('authenticates with x-api-key and the anthropic-version header', function () 
     $http = Http::fake([
         'api.anthropic.com/*' => Http::response([
             'data' => [
-                ['id' => 'claude-haiku-4-5', 'display_name' => 'Claude Haiku 4.5', 'created_at' => '2025-10-01T00:00:00Z'],
+                [
+                    'id' => 'claude-haiku-4-5',
+                    'display_name' => 'Claude Haiku 4.5',
+                    'created_at' => '2025-10-01T00:00:00Z',
+                    'max_input_tokens' => 200000,
+                    'max_tokens' => 64000,
+                    'capabilities' => ['image_input' => ['supported' => true]],
+                ],
             ],
             'has_more' => false,
             'last_id' => 'claude-haiku-4-5',
@@ -27,10 +34,31 @@ it('authenticates with x-api-key and the anthropic-version header', function () 
     expect($models)->toHaveCount(1)
         ->and($models->first()->provider)->toBe(Lab::Anthropic)
         ->and($models->first()->name)->toBe('Claude Haiku 4.5')
+        ->and($models->first()->contextWindow)->toBe(200000)
+        ->and($models->first()->maxOutputTokens)->toBe(64000)
+        ->and($models->first()->modalities)->toBe(['text', 'image'])
+        ->and($models->first()->outputModalities)->toBe(['text'])
         ->and($models->first()->createdAt)->toBeInstanceOf(DateTimeImmutable::class);
 
     Http::assertSent(fn ($request) => $request->hasHeader('x-api-key', 'sk-ant')
         && $request->hasHeader('anthropic-version', '2023-06-01'));
+});
+
+it('uses documented Claude modalities when an older response has no capabilities', function () {
+    $http = Http::fake([
+        'api.anthropic.com/*' => Http::response([
+            'data' => [['id' => 'claude-3-haiku', 'display_name' => 'Claude 3 Haiku']],
+            'has_more' => false,
+        ]),
+    ]);
+
+    $model = (new AnthropicResolver($http, Lab::Anthropic, [
+        'key' => 'sk-ant',
+        'url' => 'https://api.anthropic.com/v1',
+    ]))->models()->first();
+
+    expect($model->modalities)->toBe(['text', 'image'])
+        ->and($model->outputModalities)->toBe(['text']);
 });
 
 it('follows pagination using has_more and last_id', function () {
