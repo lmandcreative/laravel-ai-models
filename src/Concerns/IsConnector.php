@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LmSomeco\AiModels\Concerns;
 
 use Illuminate\Database\Eloquent\Model;
+use Laravel\Ai\Enums\Lab;
 
 /**
  * Default Contracts\Connector implementation for Eloquent models using the
@@ -43,9 +44,11 @@ trait IsConnector
         return (string) $this->getKey();
     }
 
-    public function getProvider(): string
+    public function getDriver(): Lab
     {
-        return (string) $this->getAttribute('provider');
+        $provider = $this->getAttribute('provider');
+
+        return $provider instanceof Lab ? $provider : Lab::from((string) $provider);
     }
 
     public function getApiKey(): string

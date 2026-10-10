@@ -2,13 +2,15 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Laravel\Ai\Ai;
 use Laravel\Ai\Enums\Lab;
 use LmSomeco\AiModels\ModelRegistry;
 
-it('resolves a runtime-injected db connector by its driver', function () {
-    // Mirror App\Services\AiService::configureConnector(): a "db-{id}" provider
-    // injected into config at runtime, whose driver (not its name) selects the resolver.
+it('resolves a runtime-injected config provider by its driver', function () {
+    // A "db-{id}" provider injected into config at runtime, whose driver (not
+    // its name) selects the resolver.
     config()->set('ai.providers.db-9f3a', [
         'driver' => 'openai',
         'key' => 'sk-from-db',
@@ -21,13 +23,14 @@ it('resolves a runtime-injected db connector by its driver', function () {
 
     expect($models)->toHaveCount(1)
         ->and($models->first()->id)->toBe('gpt-4o')
-        ->and($models->first()->provider)->toBe(Lab::OpenAI); // underlying driver lab
+        ->and($models->first()->provider)->toBe('db-9f3a')
+        ->and($models->first()->driver)->toBe(Lab::OpenAI);
 
     Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://proxy.acme.internal/v1/models')
         && $request->hasHeader('Authorization', 'Bearer sk-from-db'));
 });
 
-it('includes runtime connectors in all() and configuredProviders()', function () {
+it('includes runtime config providers in all() and configuredProviders()', function () {
     config()->set('ai.providers', [
         'db-9f3a' => ['driver' => 'openai', 'key' => 'sk-db', 'url' => 'https://proxy.acme.internal/v1'],
         'db-anth' => ['driver' => 'anthropic', 'key' => 'sk-ant', 'url' => 'https://api.anthropic.com/v1'],
@@ -45,20 +48,48 @@ it('includes runtime connectors in all() and configuredProviders()', function ()
         ->toBe(['claude-haiku-4-5', 'gpt-4o']);
 });
 
-it('resolves an ad-hoc connector via driver() without touching config', function () {
+it('lists models for an Ai::build() provider without touching config', function () {
     Http::fake(['proxy.acme.internal/*' => Http::response(['data' => [['id' => 'gpt-4o']]])]);
 
-    $models = app(ModelRegistry::class)->driver(
-        Lab::OpenAI,
-        ['key' => 'sk-adhoc', 'url' => 'https://proxy.acme.internal/v1'],
-        cacheKey: 'connector:9f3a',
-    );
+    $provider = Ai::build([
+        'name' => 'tenant-42',
+        'driver' => 'openai',
+        'key' => 'sk-adhoc',
+        'url' => 'https://proxy.acme.internal/v1',
+    ]);
 
-    expect($models)->toHaveCount(1)->and($models->first()->id)->toBe('gpt-4o');
+    $models = app(ModelRegistry::class)->provider($provider);
+
+    expect($models)->toHaveCount(1)
+        ->and($models->first()->provider)->toBe('tenant-42')
+        ->and($models->first()->driver)->toBe(Lab::OpenAI)
+        ->and(config('ai.providers'))->toBe([])
+        ->and(Cache::has('ai-models:v2:tenant-42'))->toBeTrue();
 
     Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer sk-adhoc'));
 });
 
-it('throws when an ad-hoc driver has no resolver', function () {
-    app(ModelRegistry::class)->driver(Lab::Gemini, ['key' => 'g']);
-})->throws(InvalidArgumentException::class, 'No model resolver registered for driver [gemini]');
+it('caches an anonymous Ai::build() provider under its generated name', function () {
+    Http::fake(['proxy.acme.internal/*' => Http::response(['data' => [['id' => 'gpt-4o']]])]);
+
+    $config = ['driver' => 'openai', 'key' => 'sk-adhoc', 'url' => 'https://proxy.acme.internal/v1'];
+
+    app(ModelRegistry::class)->provider(Ai::build($config));
+    app(ModelRegistry::class)->provider(Ai::build($config));
+
+    Http::assertSentCount(1);
+});
+
+it('returns nothing for an Ai::build() provider built without a key', function () {
+    Http::fake();
+
+    $provider = Ai::build(['name' => 'keyless', 'driver' => 'openai']);
+
+    expect(app(ModelRegistry::class)->provider($provider))->toBeEmpty();
+
+    Http::assertNothingSent();
+});
+
+it('throws when an Ai::build() provider has no resolver', function () {
+    app(ModelRegistry::class)->provider(Ai::build(['name' => 'g', 'driver' => 'gemini', 'key' => 'g']));
+})->throws(InvalidArgumentException::class, 'No model resolver registered for provider [g] (driver: gemini)');

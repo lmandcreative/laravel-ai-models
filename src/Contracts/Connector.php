@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace LmSomeco\AiModels\Contracts;
 
+use Laravel\Ai\Enums\Lab;
+
 /**
  * A source of AI provider credentials that ConnectorManager can resolve and
- * bridge into config('ai.providers').
+ * turn into an on-demand laravel/ai provider via Ai::build().
  *
  * Implement this on any Eloquent model to use your own table and columns, or
  * use LmSomeco\AiModels\Concerns\IsConnector for the standard ai_connectors
@@ -28,15 +30,15 @@ interface Connector
     public static function defaultConnector(): ?static;
 
     /**
-     * Stable string identity, used in the "db-{id}" provider key and the
-     * "connector:{id}" cache key. Stringify non-string primary keys.
+     * Stable string identity, used in the "db-{id}" provider name (which is
+     * also the model cache key). Stringify non-string primary keys.
      */
     public function getConnectorId(): string;
 
     /**
-     * The underlying driver: a Laravel\Ai\Enums\Lab value (e.g. "openai").
+     * The underlying laravel/ai driver (e.g. Lab::OpenAI).
      */
-    public function getProvider(): string;
+    public function getDriver(): Lab;
 
     /**
      * The decrypted API key.

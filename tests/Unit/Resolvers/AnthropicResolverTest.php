@@ -24,15 +24,17 @@ it('authenticates with x-api-key and the anthropic-version header', function () 
         ]),
     ]);
 
-    $models = (new AnthropicResolver($http, Lab::Anthropic, [
+    $models = (new AnthropicResolver($http, sdkProvider(Lab::Anthropic, [
         'key' => 'sk-ant',
         'url' => 'https://api.anthropic.com/v1',
+    ]), [
         'version' => '2023-06-01',
         'timeout' => 15,
     ]))->models();
 
     expect($models)->toHaveCount(1)
-        ->and($models->first()->provider)->toBe(Lab::Anthropic)
+        ->and($models->first()->provider)->toBe('test-anthropic')
+        ->and($models->first()->driver)->toBe(Lab::Anthropic)
         ->and($models->first()->name)->toBe('Claude Haiku 4.5')
         ->and($models->first()->contextWindow)->toBe(200000)
         ->and($models->first()->maxOutputTokens)->toBe(64000)
@@ -52,10 +54,10 @@ it('uses documented Claude modalities when an older response has no capabilities
         ]),
     ]);
 
-    $model = (new AnthropicResolver($http, Lab::Anthropic, [
+    $model = (new AnthropicResolver($http, sdkProvider(Lab::Anthropic, [
         'key' => 'sk-ant',
         'url' => 'https://api.anthropic.com/v1',
-    ]))->models()->first();
+    ])))->models()->first();
 
     expect($model->modalities)->toBe(['text', 'image'])
         ->and($model->outputModalities)->toBe(['text']);
@@ -76,9 +78,10 @@ it('follows pagination using has_more and last_id', function () {
             ]),
     ]);
 
-    $models = (new AnthropicResolver($http, Lab::Anthropic, [
+    $models = (new AnthropicResolver($http, sdkProvider(Lab::Anthropic, [
         'key' => 'sk-ant',
         'url' => 'https://api.anthropic.com/v1',
+    ]), [
         'timeout' => 15,
     ]))->models();
 

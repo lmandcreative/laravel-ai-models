@@ -6,13 +6,15 @@ namespace LmSomeco\AiModels\Console;
 
 use Illuminate\Console\Command;
 use InvalidArgumentException;
+use Laravel\Ai\Exceptions\AiException;
 use LmSomeco\AiModels\Data\AiModel;
+use LmSomeco\AiModels\Enums\ModelRole;
 use LmSomeco\AiModels\ModelRegistry;
 
 class ListModelsCommand extends Command
 {
     protected $signature = 'ai:models
-        {provider? : Limit output to a single provider (Lab value, e.g. openai)}
+        {provider? : Limit output to a single provider (its config/ai.php name, e.g. openai)}
         {--refresh : Bypass and rebuild the cache}
         {--json : Output raw JSON instead of a table}';
 
@@ -38,6 +40,12 @@ class ListModelsCommand extends Command
             $this->line('Configured providers: '.$registry->configuredProviders()->implode(', '));
 
             return self::FAILURE;
+        } catch (AiException $e) {
+            // RateLimited / ProviderOverloaded / ProviderConnection /
+            // InsufficientCredits: a provider is unreachable, not a bug.
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
         }
 
         if ($models->isEmpty()) {
@@ -53,12 +61,16 @@ class ListModelsCommand extends Command
         }
 
         $this->table(
-            ['Provider', 'Model ID', 'Name', 'Context', 'Created'],
+            ['Provider', 'Driver', 'Model ID', 'Name', 'Context', 'Roles', 'Created'],
             $models->map(fn (AiModel $model): array => [
-                $model->provider->value,
+                $model->provider,
+                $model->driver->value,
                 $model->id,
                 $model->name,
                 $model->contextWindow !== null ? number_format($model->contextWindow) : '—',
+                $model->roles === []
+                    ? '—'
+                    : implode(', ', array_map(static fn (ModelRole $role): string => $role->value, $model->roles)),
                 $model->createdAt?->format('Y-m-d') ?? '—',
             ])->all(),
         );

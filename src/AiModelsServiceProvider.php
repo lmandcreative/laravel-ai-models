@@ -10,6 +10,7 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
+use Laravel\Ai\AiManager;
 use LmSomeco\AiModels\Concerns\IsConnector;
 use LmSomeco\AiModels\Console\ListModelsCommand;
 use LmSomeco\AiModels\Contracts\Connector;
@@ -26,6 +27,7 @@ class AiModelsServiceProvider extends ServiceProvider
                 container: $app,
                 cache: $app->make(CacheFactory::class),
                 config: $app->make(Config::class),
+                ai: $app->make(AiManager::class),
             );
         });
 
@@ -53,6 +55,7 @@ class AiModelsServiceProvider extends ServiceProvider
 
             return new ConnectorManager(
                 registry: $app->make(ModelRegistry::class),
+                ai: $app->make(AiManager::class),
                 connectorModel: $model,
             );
         });

@@ -66,48 +66,66 @@ return [
     | Resolvers
     |--------------------------------------------------------------------------
     |
-    | Maps a laravel/ai provider (keyed by its Lab enum value) to the resolver
+    | Maps a laravel/ai driver (keyed by its Lab enum value) to the resolver
     | that knows how to list its models. Credentials and base URLs are read
-    | from your application's config/ai.php — this package does not duplicate
-    | them. The optional "url" below is only a fallback for providers that do
-    | not declare one in config/ai.php.
+    | from the laravel/ai provider instance (config/ai.php, or Ai::build()) —
+    | this package does not duplicate them. Every other key is a resolver
+    | default:
+    |
+    |   url                      Fallback base URL when the provider sets none.
+    |   requires_key             Whether a provider without an API key is
+    |                            skipped as unconfigured (default: true).
+    |   overloaded_status_codes  HTTP statuses rethrown as laravel/ai's
+    |                            ProviderOverloadedException.
     |
     */
 
     'resolvers' => [
 
         Lab::OpenAI->value => [
-            'driver' => OpenAiResolver::class,
+            'resolver' => OpenAiResolver::class,
+            'url' => 'https://api.openai.com/v1',
         ],
 
         Lab::Groq->value => [
-            'driver' => OpenAiCompatibleResolver::class,
+            'resolver' => OpenAiCompatibleResolver::class,
             'url' => 'https://api.groq.com/openai/v1',
+            'overloaded_status_codes' => [498, 502, 503],
         ],
 
         Lab::Mistral->value => [
-            'driver' => OpenAiCompatibleResolver::class,
+            'resolver' => OpenAiCompatibleResolver::class,
             'url' => 'https://api.mistral.ai/v1',
         ],
 
         Lab::DeepSeek->value => [
-            'driver' => OpenAiCompatibleResolver::class,
+            'resolver' => OpenAiCompatibleResolver::class,
             'url' => 'https://api.deepseek.com',
         ],
 
         Lab::xAI->value => [
-            'driver' => OpenAiCompatibleResolver::class,
+            'resolver' => OpenAiCompatibleResolver::class,
             'url' => 'https://api.x.ai/v1',
         ],
 
+        // Self-hosted and third-party OpenAI-compatible servers (vLLM, LM
+        // Studio, LiteLLM, ...): the provider's "url" is required, the key is
+        // optional.
+        Lab::OpenAICompatible->value => [
+            'resolver' => OpenAiCompatibleResolver::class,
+            'requires_key' => false,
+        ],
+
         Lab::OpenRouter->value => [
-            'driver' => OpenRouterResolver::class,
+            'resolver' => OpenRouterResolver::class,
             'url' => 'https://openrouter.ai/api/v1',
         ],
 
         Lab::Anthropic->value => [
-            'driver' => AnthropicResolver::class,
+            'resolver' => AnthropicResolver::class,
+            'url' => 'https://api.anthropic.com/v1',
             'version' => '2023-06-01',
+            'overloaded_status_codes' => [529, 502, 503, 504, 520, 522, 524],
         ],
 
         /*
@@ -122,6 +140,7 @@ return [
         |   Lab::Bedrock    -> AWS SigV4 / bearer-token auth
         |   Lab::Jina       -> no list endpoint (static catalog)
         |   Lab::VoyageAI   -> no list endpoint (static catalog)
+        |   Lab::TypeSafe   -> classification only, no list endpoint
         */
 
     ],

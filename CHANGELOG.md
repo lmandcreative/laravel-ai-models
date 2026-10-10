@@ -5,6 +5,60 @@ All notable changes to `lmsomeco/laravel-ai-models` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - Unreleased
+
+Built on `laravel/ai` 1.x. See [UPGRADE.md](UPGRADE.md) for migration steps.
+
+### Added
+
+- `Enums\ModelRole` and `AiModel::$roles` / `AiModel::is()`: every listed model
+  is tagged with the roles the SDK provider assigns it — default, cheapest and
+  smartest text model, and the default image, embeddings, audio,
+  transcription, reranking and classification models. Roles honour
+  `models.*` overrides and are applied after the cache read.
+- `AiModels::default($provider, ModelRole $role = ModelRole::Text)`.
+- `AiModels::provider()` accepts any laravel/ai `Provider` instance, including
+  on-demand providers from `Ai::build()`.
+- `ConnectorManager::provider()`: builds a serializable, queue-safe on-demand
+  provider (`db-{id}`) with `Ai::build()`.
+- `Resolvers\Resolver` abstract base class for HTTP resolvers.
+- Resolver for the SDK's `openai-compatible` driver (`Lab::OpenAICompatible`);
+  the API key is optional.
+- Listing failures are rethrown as laravel/ai's failover exceptions
+  (`RateLimitedException`, `ProviderOverloadedException`,
+  `ProviderConnectionException`, `InsufficientCreditsException`), with
+  per-lab overloaded status codes (Anthropic 529, Groq 498) configurable via
+  `overloaded_status_codes`.
+- `AiModel::$driver` and the `ai:models` table's Driver and Roles columns.
+- `ai:models` reports an unreachable or rate-limited provider as a one-line
+  error (failure exit code) instead of an uncaught exception.
+
+### Changed
+
+- **Breaking:** requires `laravel/ai` ^1.0.1; 0.x is no longer supported.
+- **Breaking:** `AiModel::$provider` is now the provider name (`string`, e.g.
+  `openai` or `db-5`); the `Lab` moved to the new `AiModel::$driver`.
+- **Breaking:** `ProviderResolver::provider()` returns the laravel/ai
+  `Provider` instance; resolvers are constructed with
+  `(HttpFactory $http, Provider $provider, array $config)`.
+- **Breaking:** `Contracts\Connector::getProvider(): string` is now
+  `getDriver(): Lab`.
+- **Breaking:** resolver entries in `config/ai-models.php` name their class
+  under `resolver` (was `driver`).
+- **Breaking:** cache keys are now `{prefix}:v2:{provider-name}`; connector
+  lists are cached under `db-{id}` (was `connector:{id}`).
+- Providers are resolved through laravel/ai's `AiManager`, so a
+  `config/ai.php` entry whose `driver` is a `Lab` case (not a string) is now
+  picked up, and providers without a resolver are never instantiated.
+- Default base URLs for OpenAI and Anthropic moved into the resolver config.
+
+### Removed
+
+- **Breaking:** `ConnectorManager::configure()` (use `provider()`; nothing is
+  written to `config('ai.providers')` any more).
+- **Breaking:** `ModelRegistry::driver()` (use `provider(Ai::build([...]))`)
+  and `ModelRegistry::connector()` (use `ConnectorManager::models()`).
+
 ## [1.0.3] - 2026-08-19
 
 ### Added

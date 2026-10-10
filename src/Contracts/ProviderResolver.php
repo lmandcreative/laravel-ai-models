@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace LmSomeco\AiModels\Contracts;
 
 use Illuminate\Support\Collection;
-use Laravel\Ai\Enums\Lab;
+use Laravel\Ai\Contracts\Providers\Provider;
 use LmSomeco\AiModels\Data\AiModel;
 
 interface ProviderResolver
 {
     /**
-     * The laravel/ai provider this resolver answers to.
+     * The laravel/ai provider instance this resolver lists models for.
      */
-    public function provider(): Lab;
+    public function provider(): Provider;
 
     /**
      * Whether this resolver has everything it needs (credentials, base URL) to run.

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Laravel\Ai\AiManager;
 use Laravel\Ai\Enums\Lab;
 use LmSomeco\AiModels\Concerns\IsConnector;
 use LmSomeco\AiModels\ConnectorManager;
@@ -49,9 +50,9 @@ class CustomProviderCredential extends Model implements Connector
         return (string) $this->getKey();
     }
 
-    public function getProvider(): string
+    public function getDriver(): Lab
     {
-        return (string) $this->getAttribute('driver');
+        return Lab::from((string) $this->getAttribute('driver'));
     }
 
     public function getApiKey(): string
@@ -109,6 +110,7 @@ function customManager(): ConnectorManager
 {
     return new ConnectorManager(
         registry: app(ModelRegistry::class),
+        ai: app(AiManager::class),
         connectorModel: CustomProviderCredential::class,
     );
 }
@@ -174,35 +176,33 @@ it('throws ModelNotFoundException when no enabled credential exists', function (
 })->throws(ModelNotFoundException::class, 'No active AI connector is configured.');
 
 // ---------------------------------------------------------------------------
-// configure() maps the custom columns into config('ai.providers')
+// provider() maps the custom columns into an on-demand laravel/ai provider
 // ---------------------------------------------------------------------------
 
-it('injects mapped credentials into config at runtime', function () {
+it('builds a provider from the mapped credentials', function () {
     $connector = CustomProviderCredential::create([
         'label' => 'Proxy', 'driver' => 'openai', 'secret' => 'sk-proxy',
         'endpoint' => 'https://proxy.test/v1',
     ]);
 
-    $providerKey = customManager()->configure($connector);
+    $provider = customManager()->provider($connector);
 
-    expect($providerKey)->toBe('db-'.$connector->getKey())
-        ->and(config("ai.providers.{$providerKey}.driver"))->toBe('openai')
-        ->and(config("ai.providers.{$providerKey}.key"))->toBe('sk-proxy')
-        ->and(config("ai.providers.{$providerKey}.url"))->toBe('https://proxy.test/v1');
+    expect($provider->name())->toBe('db-'.$connector->getKey())
+        ->and($provider->driver())->toBe('openai')
+        ->and($provider->providerCredentials())->toBe(['key' => 'sk-proxy'])
+        ->and($provider->additionalConfiguration())->toBe(['url' => 'https://proxy.test/v1']);
 });
 
-it('omits url from the injected config when the endpoint is null', function () {
+it('omits url from the built provider when the endpoint is null', function () {
     $connector = CustomProviderCredential::create([
         'label' => 'Plain', 'driver' => 'openai', 'secret' => 'sk-plain',
     ]);
 
-    $providerKey = customManager()->configure($connector);
-
-    expect(config("ai.providers.{$providerKey}"))->not->toHaveKey('url');
+    expect(customManager()->provider($connector)->additionalConfiguration())->not->toHaveKey('url');
 });
 
 // ---------------------------------------------------------------------------
-// models() end-to-end through ModelRegistry::connector()
+// models() end-to-end through ModelRegistry
 // ---------------------------------------------------------------------------
 
 it('lists models for a custom connector via models()', function () {
@@ -217,14 +217,15 @@ it('lists models for a custom connector via models()', function () {
 
     expect($models)->toHaveCount(1)
         ->and($models->first()->id)->toBe('gpt-4o')
-        ->and($models->first()->provider)->toBe(Lab::OpenAI);
+        ->and($models->first()->provider)->toBe('db-'.$connector->getKey())
+        ->and($models->first()->driver)->toBe(Lab::OpenAI);
 });
 
 // ---------------------------------------------------------------------------
 // The IsConnector trait on a custom model with standard columns
 // ---------------------------------------------------------------------------
 
-it('resolves and configures a trait-based model with zero hand-written methods', function () {
+it('resolves and builds a trait-based model with zero hand-written methods', function () {
     TraitConnector::create([
         'name' => 'Standard', 'provider' => 'openai', 'api_key' => 'sk-trait',
         'base_url' => 'https://trait.test/v1',
@@ -233,17 +234,19 @@ it('resolves and configures a trait-based model with zero hand-written methods',
 
     $manager = new ConnectorManager(
         registry: app(ModelRegistry::class),
+        ai: app(AiManager::class),
         connectorModel: TraitConnector::class,
     );
 
     $connector = $manager->resolve();
-    $providerKey = $manager->configure($connector);
+    $provider = $manager->provider($connector);
 
     expect($connector)->toBeInstanceOf(TraitConnector::class)
         ->and($connector->name)->toBe('Standard')
-        ->and(config("ai.providers.{$providerKey}.driver"))->toBe('openai')
-        ->and(config("ai.providers.{$providerKey}.key"))->toBe('sk-trait')
-        ->and(config("ai.providers.{$providerKey}.url"))->toBe('https://trait.test/v1');
+        ->and($connector->getDriver())->toBe(Lab::OpenAI)
+        ->and($provider->driver())->toBe('openai')
+        ->and($provider->providerCredentials())->toBe(['key' => 'sk-trait'])
+        ->and($provider->additionalConfiguration())->toBe(['url' => 'https://trait.test/v1']);
 });
 
 // ---------------------------------------------------------------------------

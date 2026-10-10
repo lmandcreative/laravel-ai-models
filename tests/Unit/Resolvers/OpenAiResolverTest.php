@@ -27,10 +27,10 @@ it('enriches documented OpenAI model families with modalities', function () {
         ]),
     ]);
 
-    $models = (new OpenAiResolver($http, Lab::OpenAI, [
+    $models = (new OpenAiResolver($http, sdkProvider(Lab::OpenAI, [
         'key' => 'sk-test',
         'url' => 'https://api.openai.com/v1',
-    ]))->models()->keyBy('id');
+    ])))->models()->keyBy('id');
 
     expect($models->get('gpt-5'))->toBeInstanceOf(AiModel::class)
         ->and($models->get('gpt-5')->modalities)->toBe(['text', 'image'])
@@ -58,10 +58,10 @@ it('inherits modalities from the base model for fine-tuned models', function () 
         ]),
     ]);
 
-    $model = (new OpenAiResolver($http, Lab::OpenAI, [
+    $model = (new OpenAiResolver($http, sdkProvider(Lab::OpenAI, [
         'key' => 'sk-test',
         'url' => 'https://api.openai.com/v1',
-    ]))->models()->first();
+    ])))->models()->first();
 
     expect($model->modalities)->toBe(['text', 'image'])
         ->and($model->outputModalities)->toBe(['text']);

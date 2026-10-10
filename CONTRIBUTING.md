@@ -50,10 +50,10 @@ architecture walkthrough if you're adding a provider resolver.
 
 Several providers are mapped in `laravel/ai` but have no resolver here yet —
 see the table in [`docs/extending.md`](docs/extending.md) for the list
-(Gemini, Ollama, Azure, Cohere, ElevenLabs, Bedrock, Jina, VoyageAI) and the
-per-provider quirks each one needs handled. Each is a self-contained,
-well-scoped PR: implement `ProviderResolver` (or extend
-`OpenAiCompatibleResolver` where it fits), map it in
+(Gemini, Ollama, Azure, Cohere, ElevenLabs, Bedrock, Jina, VoyageAI, TypeSafe)
+and the per-provider quirks each one needs handled. Each is a self-contained,
+well-scoped PR: extend `Resolver` (or `OpenAiCompatibleResolver` where it
+fits), map it in
 `config/ai-models.php`, and add resolver tests following the existing
 `tests/Unit/Resolvers/*Test.php` pattern.
 

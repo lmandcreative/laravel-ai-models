@@ -11,14 +11,23 @@ use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
+use Laravel\Ai\AiManager;
+use Laravel\Ai\Contracts\Providers\Provider;
 use Laravel\Ai\Enums\Lab;
-use LmSomeco\AiModels\Contracts\Connector;
 use LmSomeco\AiModels\Contracts\ProviderResolver;
 use LmSomeco\AiModels\Data\AiModel;
+use LmSomeco\AiModels\Enums\ModelRole;
 use ReflectionProperty;
 
 class ModelRegistry
 {
+    /**
+     * Bumped whenever AiModel changes shape incompatibly, so payloads cached
+     * by an older major (which may not even unserialize — e.g. 1.x stored a
+     * Lab in the now string-typed $provider) are never read back.
+     */
+    protected const CACHE_VERSION = 'v2';
+
     /**
      * The driver-to-resolver map (keyed by Lab value), from config/ai-models.php.
      *
@@ -30,22 +39,25 @@ class ModelRegistry
         protected Container $container,
         protected CacheFactory $cache,
         protected Config $config,
+        protected AiManager $ai,
     ) {}
 
     /**
-     * Every provider entry in config/ai.php that has a resolver for its driver,
-     * built into resolver instances and keyed by the provider name.
+     * Every provider entry in config/ai.php whose driver has a resolver, built
+     * into resolver instances and keyed by the provider name.
      *
-     * Because resolvers are selected by the entry's "driver" (a Lab value),
-     * dynamically-injected providers (e.g. "db-{id}" connectors registered at
-     * runtime via config(['ai.providers...' => ...])) are supported transparently.
+     * Providers are instantiated through laravel/ai itself, and only when
+     * their driver (a string or Lab case) has a resolver — e.g. Bedrock never
+     * is.
      *
      * @return Collection<string, ProviderResolver>
      */
     public function providers(): Collection
     {
-        return collect((array) $this->config->get('ai.providers', []))
-            ->map(fn (array $entry): ?ProviderResolver => $this->makeResolver($entry))
+        return collect(array_keys((array) $this->config->get('ai.providers', [])))
+            ->mapWithKeys(fn (string $name): array => [$name => $this->hasResolverFor($this->driverOf($name))
+                ? $this->makeResolver($this->ai->instance($name))
+                : null])
             ->filter();
     }
 
@@ -75,98 +87,49 @@ class ModelRegistry
     }
 
     /**
-     * The models for a single provider, by its config/ai.php name (or Lab).
+     * The models for a single provider.
+     *
+     * Pass a config/ai.php provider name (or Lab), or any laravel/ai Provider
+     * instance — including one built on demand with Ai::build(). Results are
+     * cached under the provider's name; the SDK's model roles (default,
+     * cheapest, smartest, ...) are applied after the cache read so config
+     * changes to "models.*" take effect immediately.
      *
      * @return Collection<int, AiModel>
      */
-    public function provider(Lab|string $provider, bool $fresh = false): Collection
+    public function provider(Provider|Lab|string $provider, bool $fresh = false): Collection
     {
-        $name = $provider instanceof Lab ? $provider->value : $provider;
-        $entries = (array) $this->config->get('ai.providers', []);
-
-        if (! array_key_exists($name, $entries)) {
-            throw new InvalidArgumentException("No provider named [{$name}] configured in config('ai.providers').");
-        }
-
-        $resolver = $this->makeResolver($entries[$name]);
-
-        if (! $resolver instanceof ProviderResolver) {
-            $driver = $entries[$name]['driver'] ?? 'none';
-
-            throw new InvalidArgumentException("No model resolver registered for provider [{$name}] (driver: {$driver}).");
-        }
+        $resolver = $this->resolverFor($provider);
 
         if (! $resolver->configured()) {
             return collect();
         }
 
-        return $this->remember($this->cacheKey($name), $fresh, fn (): Collection => $resolver->models());
+        $instance = $resolver->provider();
+        $roles = ModelRole::assignments($instance);
+
+        return $this->remember($this->cacheKey($instance->name()), $fresh, fn (): Collection => $resolver->models())
+            ->map(fn (AiModel $model): AiModel => isset($roles[$model->id]) ? $model->withRoles($roles[$model->id]) : $model)
+            ->values();
     }
 
     /**
-     * Resolve models for an ad-hoc connector that is not declared in config/ai.php.
-     *
-     * Pass the underlying driver (a Lab) plus its credentials. Caching is opt-in:
-     * provide a $cacheKey (e.g. "connector:{$connector->getConnectorId()}") to cache the result.
-     *
-     * @param  array<string, mixed>  $config  e.g. ['key' => '...', 'url' => '...']
-     * @return Collection<int, AiModel>
+     * The listed model holding the given role on a provider (by default, its
+     * default text model), or null when the provider does not list it.
      */
-    public function driver(Lab|string $driver, array $config = [], ?string $cacheKey = null, bool $fresh = false): Collection
+    public function default(Provider|Lab|string $provider, ModelRole $role = ModelRole::Text): ?AiModel
     {
-        $entry = array_merge($config, [
-            'driver' => $driver instanceof Lab ? $driver->value : $driver,
-        ]);
-
-        $resolver = $this->makeResolver($entry);
-
-        if (! $resolver instanceof ProviderResolver) {
-            $name = $driver instanceof Lab ? $driver->value : $driver;
-
-            throw new InvalidArgumentException("No model resolver registered for driver [{$name}].");
-        }
-
-        if (! $resolver->configured()) {
-            return collect();
-        }
-
-        if ($cacheKey === null) {
-            return $resolver->models();
-        }
-
-        return $this->remember($this->cacheKey($cacheKey), $fresh, fn (): Collection => $resolver->models());
+        return $this->provider($provider)->first(fn (AiModel $model): bool => $model->is($role));
     }
 
     /**
-     * Resolve models for a database-driven connector instance.
-     *
-     * Uses a stable per-connector cache key so repeated calls within the same
-     * request hit the cache. Pass $fresh = true to bypass it.
-     *
-     * @return Collection<int, AiModel>
+     * Drop cached models for one provider, or for every provider currently
+     * declared in config/ai.php.
      */
-    public function connector(Connector $connector, bool $fresh = false): Collection
-    {
-        return $this->driver(
-            driver: $connector->getProvider(),
-            config: array_filter([
-                'key' => $connector->getApiKey(),
-                'url' => $connector->getBaseUrl(),
-            ]),
-            cacheKey: 'connector:'.$connector->getConnectorId(),
-            fresh: $fresh,
-        );
-    }
-
-    /**
-     * Drop cached models for one provider (or cache key), or for every provider
-     * currently declared in config/ai.php.
-     */
-    public function refresh(Lab|string|null $provider = null): void
+    public function refresh(Provider|Lab|string|null $provider = null): void
     {
         if ($provider !== null) {
-            $name = $provider instanceof Lab ? $provider->value : $provider;
-            $this->store()->forget($this->cacheKey($name));
+            $this->store()->forget($this->cacheKey($this->nameOf($provider)));
 
             return;
         }
@@ -176,37 +139,79 @@ class ModelRegistry
             ->each(fn (string $name) => $this->store()->forget($this->cacheKey($name)));
     }
 
-    /**
-     * Build a resolver from a config/ai.php-style provider entry. The resolver
-     * class is chosen by the entry's "driver" (Lab value); credentials and base
-     * URL come from the entry, with resolver-level fallbacks (url, version)
-     * filled in behind them.
-     *
-     * @param  array<string, mixed>  $entry
-     */
-    protected function makeResolver(array $entry): ?ProviderResolver
+    protected function resolverFor(Provider|Lab|string $provider): ProviderResolver
     {
-        $driver = $entry['driver'] ?? null;
-        $lab = is_string($driver) ? Lab::tryFrom($driver) : null;
+        if (! $provider instanceof Provider) {
+            $name = $this->nameOf($provider);
 
-        if (! $lab instanceof Lab) {
+            if (! array_key_exists($name, (array) $this->config->get('ai.providers', []))) {
+                throw new InvalidArgumentException("No provider named [{$name}] configured in config('ai.providers').");
+            }
+
+            $driver = $this->driverOf($name);
+
+            if (! $this->hasResolverFor($driver)) {
+                throw new InvalidArgumentException("No model resolver registered for provider [{$name}] (driver: {$driver}).");
+            }
+
+            $provider = $this->ai->instance($name);
+        }
+
+        return $this->makeResolver($provider)
+            ?? throw new InvalidArgumentException("No model resolver registered for provider [{$provider->name()}] (driver: {$provider->driver()}).");
+    }
+
+    /**
+     * Build the resolver for a laravel/ai provider instance. The resolver
+     * class is chosen by the provider's driver; the remaining entry keys are
+     * passed to it as defaults (url, version, timeout, ...).
+     */
+    protected function makeResolver(Provider $provider): ?ProviderResolver
+    {
+        $resolverConfig = $this->resolverMap()->get($provider->driver());
+
+        if ($resolverConfig === null || ! isset($resolverConfig['resolver'])) {
             return null;
         }
 
-        $resolverConfig = $this->resolverMap()->get($lab->value);
-
-        if ($resolverConfig === null) {
-            return null;
-        }
-
-        $config = array_merge($resolverConfig, $entry);
-        unset($config['driver']);
+        $config = $resolverConfig;
+        unset($config['resolver']);
         $config['timeout'] ??= (int) $this->config->get('ai-models.timeout', 15);
 
-        return $this->container->make($resolverConfig['driver'], [
-            'lab' => $lab,
+        return $this->container->make($resolverConfig['resolver'], [
+            'provider' => $provider,
             'config' => $config,
         ]);
+    }
+
+    protected function hasResolverFor(string $driver): bool
+    {
+        return isset($this->resolverMap()->get($driver)['resolver']);
+    }
+
+    /**
+     * The driver of a config/ai.php provider entry, as a string ("" when the
+     * entry has none). laravel/ai accepts a Lab case as well as its value.
+     */
+    protected function driverOf(string $name): string
+    {
+        $entry = ((array) $this->config->get('ai.providers', []))[$name] ?? null;
+        $driver = is_array($entry) ? ($entry['driver'] ?? null) : null;
+
+        return match (true) {
+            $driver instanceof Lab => $driver->value,
+            is_string($driver) => $driver,
+            default => '',
+        };
+    }
+
+    protected function nameOf(Provider|Lab|string $provider): string
+    {
+        return match (true) {
+            $provider instanceof Provider => $provider->name(),
+            $provider instanceof Lab => $provider->value,
+            default => $provider,
+        };
     }
 
     /**
@@ -256,17 +261,18 @@ class ModelRegistry
      * Whether a cached payload can be returned as-is. Anything that is not a
      * Collection of intact objects — notably the __PHP_Incomplete_Class
      * instances unserialize() produces when the cache holds objects of a class
-     * this deployment cannot load — is treated as a cache miss.
+     * this deployment cannot load, or AiModels missing a property added since
+     * they were cached — is treated as a cache miss.
      *
      * @phpstan-assert-if-true Collection<int, AiModel> $cached
      */
     protected function usable(mixed $cached): bool
     {
-        $outputModalities = new ReflectionProperty(AiModel::class, 'outputModalities');
+        $driver = new ReflectionProperty(AiModel::class, 'driver');
 
         return $cached instanceof Collection
             && ! $cached->contains(static fn ($model): bool => ! $model instanceof AiModel
-                || ! $outputModalities->isInitialized($model));
+                || ! $driver->isInitialized($model));
     }
 
     protected function store(): Repository
@@ -278,6 +284,6 @@ class ModelRegistry
     {
         $prefix = (string) $this->config->get('ai-models.cache.prefix', 'ai-models');
 
-        return "{$prefix}:{$name}";
+        return $prefix.':'.static::CACHE_VERSION.':'.$name;
     }
 }

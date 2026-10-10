@@ -28,8 +28,7 @@ class OpenRouterResolver extends OpenAiCompatibleResolver
             return null;
         }
 
-        return new AiModel(
-            provider: $this->provider(),
+        return $this->newModel(
             id: (string) $model['id'],
             name: $model['name'] ?? (string) $model['id'],
             contextWindow: isset($model['context_length']) ? (int) $model['context_length'] : null,

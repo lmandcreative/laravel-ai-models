@@ -28,8 +28,7 @@ class OpenAiResolver extends OpenAiCompatibleResolver
 
         [$modalities, $outputModalities] = $this->modalitiesFor($mapped->id);
 
-        return new AiModel(
-            provider: $mapped->provider,
+        return $this->newModel(
             id: $mapped->id,
             name: $mapped->name,
             contextWindow: $mapped->contextWindow,

@@ -5,43 +5,22 @@ declare(strict_types=1);
 namespace LmSomeco\AiModels\Resolvers;
 
 use DateTimeImmutable;
-use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Collection;
-use Laravel\Ai\Enums\Lab;
-use LmSomeco\AiModels\Contracts\ProviderResolver;
 use LmSomeco\AiModels\Data\AiModel;
 
 /**
  * Handles any provider that exposes an OpenAI-style `GET /models` endpoint
  * returning `{ "data": [ { "id": "..." }, ... ] }` with Bearer auth.
  *
- * Covers Groq, Mistral, DeepSeek and xAI out of the box — they differ only by
- * base URL, which comes from config. OpenAI uses a small subclass to enrich
- * the sparse response with its documented model-family modalities.
+ * Covers Groq, Mistral, DeepSeek, xAI and laravel/ai's generic
+ * "openai-compatible" driver out of the box — they differ only by base URL,
+ * which comes from config. OpenAI uses a small subclass to enrich the sparse
+ * response with its documented model-family modalities.
  */
-class OpenAiCompatibleResolver implements ProviderResolver
+class OpenAiCompatibleResolver extends Resolver
 {
-    /**
-     * @param  array<string, mixed>  $config  Merged config/ai.php provider config + resolver defaults.
-     */
-    public function __construct(
-        protected HttpFactory $http,
-        protected Lab $lab,
-        protected array $config,
-    ) {}
-
-    public function provider(): Lab
-    {
-        return $this->lab;
-    }
-
-    public function configured(): bool
-    {
-        return filled($this->apiKey());
-    }
-
-    public function models(): Collection
+    protected function fetch(): Collection
     {
         $response = $this->request()->get($this->modelsPath())->throw();
         $data = $response->json('data', []);
@@ -53,16 +32,6 @@ class OpenAiCompatibleResolver implements ProviderResolver
             ->values();
     }
 
-    protected function apiKey(): ?string
-    {
-        return $this->config['key'] ?? null;
-    }
-
-    protected function baseUrl(): string
-    {
-        return rtrim((string) ($this->config['url'] ?? ''), '/');
-    }
-
     protected function modelsPath(): string
     {
         return '/models';
@@ -70,10 +39,7 @@ class OpenAiCompatibleResolver implements ProviderResolver
 
     protected function request(): PendingRequest
     {
-        $request = $this->http
-            ->baseUrl($this->baseUrl())
-            ->acceptJson()
-            ->timeout((int) ($this->config['timeout'] ?? 15));
+        $request = parent::request();
 
         if (filled($this->apiKey())) {
             $request->withToken($this->apiKey());
@@ -91,8 +57,7 @@ class OpenAiCompatibleResolver implements ProviderResolver
             return null;
         }
 
-        return new AiModel(
-            provider: $this->provider(),
+        return $this->newModel(
             id: (string) $model['id'],
             name: (string) $model['id'],
             createdAt: isset($model['created'])

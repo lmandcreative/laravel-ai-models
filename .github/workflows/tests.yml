@@ -14,7 +14,7 @@ jobs:
       matrix:
         php: ['8.3', '8.4']
         laravel: ['12.*', '13.*']
-        ai: ['^0.7', '^0.10']
+        ai: ['1.0.1', '^1.0']
         include:
           - laravel: '12.*'
             testbench: '10.*'

@@ -18,11 +18,10 @@ function openAiResolver(array $config = []): OpenAiCompatibleResolver
         ]),
     ]);
 
-    return new OpenAiCompatibleResolver($http, Lab::OpenAI, array_merge([
+    return new OpenAiCompatibleResolver($http, sdkProvider(Lab::OpenAI, array_merge([
         'key' => 'sk-test',
         'url' => 'https://api.openai.com/v1',
-        'timeout' => 15,
-    ], $config));
+    ], $config)), ['timeout' => 15]);
 }
 
 it('lists and normalizes models from an OpenAI-style endpoint', function () {
@@ -31,7 +30,8 @@ it('lists and normalizes models from an OpenAI-style endpoint', function () {
     // Two valid models (the id-less row is dropped) and sorted by id.
     expect($models)->toHaveCount(2)
         ->and($models->pluck('id')->all())->toBe(['gpt-4o', 'gpt-4o-mini'])
-        ->and($models->first()->provider)->toBe(Lab::OpenAI)
+        ->and($models->first()->provider)->toBe('test-openai')
+        ->and($models->first()->driver)->toBe(Lab::OpenAI)
         ->and($models->first()->createdAt)->toBeInstanceOf(DateTimeImmutable::class);
 });
 
@@ -44,7 +44,9 @@ it('sends a bearer token to the configured base URL', function () {
 
 it('reports as unconfigured when no key is present', function () {
     $http = Http::fake();
-    $resolver = new OpenAiCompatibleResolver($http, Lab::OpenAI, ['url' => 'https://api.openai.com/v1']);
+    $resolver = new OpenAiCompatibleResolver($http, sdkProvider(Lab::OpenAI, [
+        'url' => 'https://api.openai.com/v1',
+    ]));
 
     expect($resolver->configured())->toBeFalse();
 });

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Http;
+use Laravel\Ai\Ai;
+use Laravel\Ai\AiManager;
+use Laravel\Ai\Contracts\Providers\Provider;
 use Laravel\Ai\Enums\Lab;
 use LmSomeco\AiModels\ConnectorManager;
 use LmSomeco\AiModels\ModelRegistry;
@@ -23,7 +26,7 @@ it('resolves the default connector', function () {
         'sort_order' => 0,
     ]);
 
-    $manager = new ConnectorManager(app(ModelRegistry::class));
+    $manager = app(ConnectorManager::class);
 
     expect($manager->resolve()->name)->toBe('Default');
 });
@@ -38,7 +41,7 @@ it('resolves by id', function () {
         'sort_order' => 0,
     ]);
 
-    $manager = new ConnectorManager(app(ModelRegistry::class));
+    $manager = app(ConnectorManager::class);
 
     expect($manager->resolve($created->id)->id)->toBe($created->id);
 });
@@ -53,21 +56,21 @@ it('falls back to the first active connector when no default is set', function (
         'is_active' => true, 'is_default' => false, 'sort_order' => 2,
     ]);
 
-    $manager = new ConnectorManager(app(ModelRegistry::class));
+    $manager = app(ConnectorManager::class);
 
     expect($manager->resolve()->name)->toBe('First');
 });
 
 it('throws ModelNotFoundException when no active connector exists', function () {
-    $manager = new ConnectorManager(app(ModelRegistry::class));
+    $manager = app(ConnectorManager::class);
     $manager->resolve();
 })->throws(ModelNotFoundException::class);
 
 // ---------------------------------------------------------------------------
-// ConnectorManager::configure()
+// ConnectorManager::provider()
 // ---------------------------------------------------------------------------
 
-it('injects the connector credentials into config at runtime', function () {
+it('builds an on-demand laravel/ai provider for the connector', function () {
     $connector = AiConnector::create([
         'name' => 'Proxy',
         'provider' => 'openai',
@@ -78,16 +81,20 @@ it('injects the connector credentials into config at runtime', function () {
         'sort_order' => 0,
     ]);
 
-    $manager = new ConnectorManager(app(ModelRegistry::class));
-    $providerKey = $manager->configure($connector);
+    $provider = app(ConnectorManager::class)->provider($connector);
 
-    expect($providerKey)->toBe('db-'.$connector->id)
-        ->and(config("ai.providers.{$providerKey}.driver"))->toBe('openai')
-        ->and(config("ai.providers.{$providerKey}.key"))->toBe('sk-proxy')
-        ->and(config("ai.providers.{$providerKey}.url"))->toBe('https://proxy.test/v1');
+    expect($provider)->toBeInstanceOf(Provider::class)
+        ->and($provider->name())->toBe('db-'.$connector->id)
+        ->and($provider->driver())->toBe('openai')
+        ->and($provider->providerCredentials())->toBe(['key' => 'sk-proxy'])
+        ->and($provider->additionalConfiguration())->toBe(['url' => 'https://proxy.test/v1'])
+        ->and(config('ai.providers'))->toBe([]);
+
+    // Resolvable by name for the rest of the operation, e.g. prompt(provider: 'db-…').
+    expect(Ai::textProvider($provider->name()))->toBe($provider);
 });
 
-it('omits url from the injected config when base_url is null', function () {
+it('omits url from the built provider when base_url is null', function () {
     $connector = AiConnector::create([
         'name' => 'Plain',
         'provider' => 'openai',
@@ -97,13 +104,34 @@ it('omits url from the injected config when base_url is null', function () {
         'sort_order' => 0,
     ]);
 
-    $providerKey = (new ConnectorManager(app(ModelRegistry::class)))->configure($connector);
+    $provider = app(ConnectorManager::class)->provider($connector);
 
-    expect(config("ai.providers.{$providerKey}"))->not->toHaveKey('url');
+    expect($provider->additionalConfiguration())->not->toHaveKey('url');
+});
+
+it('builds a provider that survives serialization with its key encrypted', function () {
+    $connector = AiConnector::create([
+        'name' => 'Queued',
+        'provider' => 'anthropic',
+        'api_key' => 'sk-secret',
+        'is_active' => true,
+        'is_default' => true,
+        'sort_order' => 0,
+    ]);
+
+    $serialized = serialize(app(ConnectorManager::class)->provider($connector));
+
+    // Simulate a fresh queue worker process.
+    app(AiManager::class)->flushState();
+    $restored = unserialize($serialized);
+
+    expect($serialized)->not->toContain('sk-secret')
+        ->and($restored->name())->toBe('db-'.$connector->id)
+        ->and($restored->providerCredentials())->toBe(['key' => 'sk-secret']);
 });
 
 // ---------------------------------------------------------------------------
-// ConnectorManager::models() / ModelRegistry::connector()
+// ConnectorManager::models()
 // ---------------------------------------------------------------------------
 
 it('lists models for a connector via models()', function () {
@@ -119,11 +147,37 @@ it('lists models for a connector via models()', function () {
 
     Http::fake(['proxy.test/*' => Http::response(['data' => [['id' => 'gpt-4o']]])]);
 
-    $models = (new ConnectorManager(app(ModelRegistry::class)))->models($connector);
+    $models = app(ConnectorManager::class)->models($connector);
 
     expect($models)->toHaveCount(1)
         ->and($models->first()->id)->toBe('gpt-4o')
-        ->and($models->first()->provider)->toBe(Lab::OpenAI);
+        ->and($models->first()->provider)->toBe('db-'.$connector->id)
+        ->and($models->first()->driver)->toBe(Lab::OpenAI);
+});
+
+it('caches connector models under the db-{id} provider name', function () {
+    config()->set('ai-models.cache.ttl', 3600);
+
+    $connector = AiConnector::create([
+        'name' => 'Proxy',
+        'provider' => 'openai',
+        'api_key' => 'sk-proxy',
+        'base_url' => 'https://proxy.test/v1',
+        'is_active' => true,
+        'is_default' => true,
+        'sort_order' => 0,
+    ]);
+
+    Http::fake(['proxy.test/*' => Http::response(['data' => [['id' => 'gpt-4o']]])]);
+
+    $manager = app(ConnectorManager::class);
+    $manager->models($connector);
+    $manager->models($connector);
+    Http::assertSentCount(1);
+
+    app(ModelRegistry::class)->refresh('db-'.$connector->id);
+    $manager->models($connector);
+    Http::assertSentCount(2);
 });
 
 // ---------------------------------------------------------------------------
@@ -142,6 +196,7 @@ it('accepts a custom connectorModel class', function () {
 
     $manager = new ConnectorManager(
         registry: app(ModelRegistry::class),
+        ai: app(AiManager::class),
         connectorModel: AiConnector::class,  // would be App\Models\AiConnector in a real app
     );
 

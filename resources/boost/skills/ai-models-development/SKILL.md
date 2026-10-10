@@ -13,22 +13,30 @@ database connector system.
 
 ```
 ModelRegistry              orchestrates everything; resolvable via the
-  |                        AiModels facade or DI.
-  |-- providers()          builds every provider entry in config('ai.providers')
-  |                        into a resolver, keyed by provider name.
-  |-- provider()/all()     look up / cache models for named providers.
-  |-- driver()             ad-hoc lookup: Lab + credentials, no config entry
-  |   |                    needed. Caching is opt-in via $cacheKey.
+  |                        AiModels facade or DI. Depends on laravel/ai's
+  |                        AiManager.
+  |-- providers()          every config('ai.providers') entry whose driver has
+  |                        a resolver, built via AiManager::instance().
+  |-- provider()/all()     look up / cache models for a provider name, Lab or
+  |                        any laravel/ai Provider instance (Ai::build()).
+  |-- default()            the listed model holding a ModelRole.
   |   |
-  |   `-- makeResolver()   merges config/ai-models.php resolver defaults with
-  |                        the config/ai.php provider entry (entry wins),
-  |                        then container->make()s the resolver class.
+  |   `-- makeResolver()   picks config('ai-models.resolvers.{driver}.resolver')
+  |                        and container->make()s it with the Provider and the
+  |                        remaining entry keys as defaults.
   |
-ProviderResolver (interface) implemented by:
-  |-- OpenAiCompatibleResolver   Groq, Mistral, DeepSeek, xAI
-  |     |-- OpenAiResolver       enriches documented OpenAI modalities
-  |     `-- OpenRouterResolver   maps rich API metadata
-  `-- AnthropicResolver          bespoke: x-api-key header, pagination
+Enums\ModelRole            default/cheapest/smartest text, image, embeddings,
+                            audio, transcription, reranking, classification —
+                            read from the SDK provider, applied after the cache.
+
+ProviderResolver (interface)
+  `-- Resolver (abstract)        reads key/url from the Provider, wraps fetch()
+        |                        in the SDK's HandlesFailoverErrors.
+        |-- OpenAiCompatibleResolver   Groq, Mistral, DeepSeek, xAI,
+        |     |                        openai-compatible
+        |     |-- OpenAiResolver       enriches documented OpenAI modalities
+        |     `-- OpenRouterResolver   maps rich API metadata
+        `-- AnthropicResolver          bespoke: x-api-key header, pagination
 
 ConnectorManager            wraps any Eloquent model implementing
   |                         Contracts\Connector (default: Models\AiConnector;
@@ -36,8 +44,8 @@ ConnectorManager            wraps any Eloquent model implementing
   |                         standard columns). Migrations gated behind
   |                         ai-models.connectors.enabled.
   |-- resolve()             Connector::findConnector() / defaultConnector().
-  |-- configure()           inject it into config('ai.providers.db-{id}').
-  `-- models()              -> ModelRegistry::connector() -> driver().
+  |-- provider()            Ai::build() an on-demand provider named db-{id}.
+  `-- models()              -> ModelRegistry::provider(provider()).
 
 Console\ListModelsCommand   `php artisan ai:models` — thin wrapper over
                              ModelRegistry::provider()/all().
@@ -45,9 +53,9 @@ Console\ListModelsCommand   `php artisan ai:models` — thin wrapper over
 Facades\AiModels             static proxy to the ModelRegistry singleton.
 ```
 
-Everything is built through the container. Resolvers receive `Lab $lab` and
-`array $config` (merged) via constructor injection — add other typed
-dependencies freely.
+Everything is built through the container. Resolvers receive
+`Provider $provider` and `array $config` (resolver defaults) via constructor
+injection — add other typed dependencies freely.
 
 ## Adding a new provider resolver
 
@@ -57,27 +65,30 @@ dependencies freely.
    what differs — usually just `mapModel()` for extra fields, or
    `modelsPath()`/`request()` for auth quirks. `OpenRouterResolver` is the
    reference example.
-2. Otherwise, implement `LmSomeco\AiModels\Contracts\ProviderResolver`
-   directly: `provider(): Lab`, `configured(): bool`, `models(): Collection`.
+2. Otherwise, extend `LmSomeco\AiModels\Resolvers\Resolver` and implement
+   `fetch(): Collection`, building models with `newModel(...)`.
    `AnthropicResolver` is the reference example (custom headers, pagination).
 3. Map the resolver to a `Lab` value in `config/ai-models.php`'s
    `resolvers` array — the array key must be `Lab::X->value`, not a
    `config('ai.providers')` name:
    ```php
    Lab::Gemini->value => [
-       'driver' => \LmSomeco\AiModels\Resolvers\GeminiResolver::class,
+       'resolver' => \LmSomeco\AiModels\Resolvers\GeminiResolver::class,
        'url' => 'https://generativelanguage.googleapis.com/v1beta', // fallback only
    ],
    ```
+   Add `requires_key => false` if listing works without a key, and
+   `overloaded_status_codes` if the lab has its own transient statuses.
 4. `configured()` must return `false` (not throw) when required credentials
    are missing — the registry treats that as "no models", not an error.
-5. `models()` must return `Collection<int, AiModel>`, sorted by `id` for
+5. `fetch()` must return `Collection<int, AiModel>`, sorted by `id` for
    consistency with the existing resolvers, and should call `->throw()` on
-   the HTTP response so upstream failures surface as exceptions rather than
-   silently returning nothing.
-6. Update the provider table in `README.md` and the "not yet implemented"
+   the HTTP response so upstream failures surface as the SDK's failover
+   exceptions rather than silently returning nothing.
+6. Don't set model roles in a resolver — the registry applies them.
+7. Update the provider table in `README.md` and the "not yet implemented"
    list in `docs/extending.md` and `config/ai-models.php`'s comment block.
-7. Add a CHANGELOG `[Unreleased]` entry.
+8. Add a CHANGELOG `[Unreleased]` entry.
 
 ## Testing patterns
 
@@ -86,9 +97,11 @@ Pest 3 on Orchestra Testbench. Run everything with `composer test`
 Composer automatically.
 
 - **Resolver tests** (`tests/Unit/Resolvers/*Test.php`): fake HTTP with
-  `Illuminate\Support\Facades\Http::fake([...])` and assert on the returned
-  `AiModel` fields. No database involved — these extend the plain
-  `LmSomeco\AiModels\Tests\TestCase`.
+  `Illuminate\Support\Facades\Http::fake([...])`, build the SDK provider with
+  the `sdkProvider(Lab::X, ['key' => ..., 'url' => ...])` helper from
+  `tests/Pest.php`, and assert on the returned `AiModel` fields. No database
+  involved — these extend the plain `LmSomeco\AiModels\Tests\TestCase`,
+  which registers laravel/ai's `AiServiceProvider`.
 - **Registry/command tests** (`tests/Feature/*Test.php`): also extend
   `TestCase`, which resets `config('ai.providers')` to `[]` in
   `defineEnvironment()` so each test registers exactly the providers it

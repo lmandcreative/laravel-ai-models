@@ -3,7 +3,7 @@
 ## Requirements
 
 - PHP 8.3+
-- `laravel/ai` ^0.7 (already configured with your provider credentials in
+- `laravel/ai` ^1.0.1 (already configured with your provider credentials in
   `config/ai.php`)
 
 ## Install
@@ -33,24 +33,28 @@ publish it.
 
 ## Credentials
 
-This package does **not** duplicate provider credentials. It reads them
-straight from `config/ai.php` — the Laravel AI SDK's own config — keyed by
-provider name, with a `driver` entry pointing at a `Lab` enum value:
+This package does **not** duplicate provider credentials. Providers are
+resolved through the Laravel AI SDK itself, so credentials come from
+`config/ai.php` — keyed by provider name, with a `driver` that is a `Lab` enum
+case or its string value:
 
 ```php
 // config/ai.php
 'providers' => [
     'openai' => [
-        'driver' => 'openai',
+        'driver' => 'openai',          // or Lab::OpenAI
         'key' => env('OPENAI_API_KEY'),
     ],
 ],
 ```
 
-Any provider entry whose `driver` matches a `Lab` value with a registered
-resolver (see `config/ai-models.php`) is picked up automatically. A provider
-without a key is simply skipped (see [Usage](usage.md)) — nothing throws for
-being unconfigured.
+Any provider entry whose driver has a registered resolver (see
+`config/ai-models.php`) is picked up automatically. A provider without the
+credentials its resolver needs is simply skipped (see [Usage](usage.md)) —
+nothing throws for being unconfigured.
+
+Providers that never touch config work too: pass any provider built with
+`Ai::build([...])` straight to `AiModels::provider()`.
 
 ## Environment variables
 

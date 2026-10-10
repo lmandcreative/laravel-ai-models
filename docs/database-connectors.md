@@ -28,7 +28,7 @@ first resolved.
 |----------------|---------------------|-------|
 | `id`             | `uuid`, primary key  | `HasUuids`. |
 | `name`           | `string`             | Human-readable label. |
-| `provider`       | `string`             | A `Lab` enum value, e.g. `"openai"`, `"anthropic"`. |
+| `provider`       | `string`             | A `Lab` enum value, e.g. `"openai"`, `"anthropic"` (`IsConnector::getDriver()` turns it into the `Lab`). |
 | `api_key`        | `text`               | Cast `encrypted` — encrypted at rest via `APP_KEY`. |
 | `model`          | `string`, nullable   | Optional default model ID for your own use. |
 | `base_url`       | `string`, nullable   | Overrides the provider's default API base URL. |
@@ -50,10 +50,10 @@ typed against the `LmSomeco\AiModels\Contracts\Connector` contract:
 |--------|-------|
 | `static findConnector(string $id): ?static` | `ConnectorManager::resolve($id)`; return `null` for "not found" (the manager throws). |
 | `static defaultConnector(): ?static` | `ConnectorManager::resolve()` with no id — your "active default" plus fallback ordering. |
-| `getConnectorId(): string` | The `db-{id}` provider key and the `connector:{id}` cache key. |
-| `getProvider(): string` | The `driver` config entry — a `Lab` enum value, e.g. `"openai"`. |
-| `getApiKey(): string` | The `key` config entry (return it decrypted). |
-| `getBaseUrl(): ?string` | The `url` config entry; `null` omits it. |
+| `getConnectorId(): string` | The `db-{id}` provider name (also its model cache key). |
+| `getDriver(): Lab` | The provider's `driver`, e.g. `Lab::OpenAI`. |
+| `getApiKey(): string` | The provider's `key` (return it decrypted). |
+| `getBaseUrl(): ?string` | The provider's `url`; `null` omits it. |
 
 Point `ai-models.connectors.model` at any Eloquent model implementing the
 contract:
@@ -107,60 +107,73 @@ constructor injection.
   active connector by sort order. Throws `ModelNotFoundException` if no
   active connector exists at all.
 
-### `configure(Connector $connector): string`
+### `provider(Connector $connector): Provider`
 
-Registers a runtime `config('ai.providers.db-{id}')` entry for the
-connector (`driver`, `key`, `url` — `url` omitted when `getBaseUrl()` is
-null) and returns that provider key (`'db-'.$connector->getConnectorId()`)
-so you can pass it anywhere a provider name is expected, including straight
-into `laravel/ai`:
+Builds an on-demand laravel/ai provider for the connector with `Ai::build()`,
+named `db-{id}` (`driver`, `key` and `url` — `url` omitted when
+`getBaseUrl()` is null). Nothing is written to `config('ai.providers')`.
 
 ```php
-$providerKey = $connectorManager->configure($connector);
+$provider = $connectorManager->provider($connector);
 
-$models = AiModels::provider($providerKey);
-Laravel\Ai\Facades\Ai::provider($providerKey)->ask(/* ... */);
+$provider->name();                    // 'db-9c1e...'
+$models = AiModels::provider($provider);
 ```
 
-The config mutation is process-local — it lasts for the current
-request/command run only, since credentials are decrypted from the database
-rather than stored in `.env`.
+To prompt with it, either return it from your agent's `provider()` method —
+the SDK's recommended home for on-demand providers — or pass its name while
+it's registered for the current operation:
+
+```php
+use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\Providers\Provider;
+use Laravel\Ai\Promptable;
+use LmSomeco\AiModels\ConnectorManager;
+
+class SupportAgent implements Agent
+{
+    use Promptable;
+
+    public function __construct(public string $connectorId) {}
+
+    public function provider(): Provider
+    {
+        $manager = app(ConnectorManager::class);
+
+        return $manager->provider($manager->resolve($this->connectorId));
+    }
+
+    // instructions(), ...
+}
+
+// or, in the same request/job that built it:
+(new SupportAgent($id))->prompt('...', provider: $provider->name());
+```
+
+The provider serializes with its configuration **encrypted** (via `APP_KEY`),
+so it is safe to hand to queued work. laravel/ai flushes on-demand providers
+between queue jobs and Octane operations, which is why building it inside the
+agent's `provider()` method is the most robust option.
 
 ### `models(Connector $connector, bool $fresh = false): Collection<int, AiModel>`
 
-Shortcut for listing a connector's models without going through `configure()`
-first. Delegates to `ModelRegistry::connector()`.
+Lists the connector's models — shorthand for
+`AiModels::provider($connectorManager->provider($connector), $fresh)`.
+Results are cached under the `db-{id}` provider name; see
+[Caching](caching.md).
 
-## `ModelRegistry::connector()` and `driver()`
+## Credentials that don't come from a `Connector`
 
-`ConnectorManager::models()` is a thin wrapper around
-`ModelRegistry::connector(Connector $connector, bool $fresh = false)`,
-which in turn calls the lower-level `driver()`:
-
-```php
-// ModelRegistry::connector()
-return $this->driver(
-    driver: $connector->getProvider(),
-    config: array_filter(['key' => $connector->getApiKey(), 'url' => $connector->getBaseUrl()]),
-    cacheKey: 'connector:'.$connector->getConnectorId(),
-    fresh: $fresh,
-);
-```
-
-`driver()` builds a resolver directly from a `Lab` and a credentials array —
-no entry in `config('ai.providers')` required. Its cache key format and
-`$fresh` semantics are covered in [Caching](caching.md).
-
-You can call `driver()` yourself for credentials that don't come from a
-`Connector` model at all:
+Any provider you build yourself works the same way — no model required:
 
 ```php
-use Laravel\Ai\Enums\Lab;
+use Laravel\Ai\Ai;
 use LmSomeco\AiModels\Facades\AiModels;
 
-$models = AiModels::driver(
-    Lab::from($row->provider),
-    ['key' => $row->api_key, 'url' => $row->base_url],
-    cacheKey: "connector:{$row->id}",   // omit to skip caching entirely
-);
+$models = AiModels::provider(Ai::build([
+    'name' => "tenant-{$tenant->id}",
+    'driver' => $tenant->ai_driver,     // a Lab value
+    'key' => $tenant->ai_key,
+    'url' => $tenant->ai_url,
+]));
 ```

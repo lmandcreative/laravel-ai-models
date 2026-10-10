@@ -5,10 +5,7 @@ declare(strict_types=1);
 namespace LmSomeco\AiModels\Resolvers;
 
 use DateTimeImmutable;
-use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Collection;
-use Laravel\Ai\Enums\Lab;
-use LmSomeco\AiModels\Contracts\ProviderResolver;
 use LmSomeco\AiModels\Data\AiModel;
 
 /**
@@ -16,42 +13,20 @@ use LmSomeco\AiModels\Data\AiModel;
  * header plus an `anthropic-version` header, returns `display_name` and an
  * ISO-8601 `created_at`, and paginates with `after_id` / `has_more`.
  */
-class AnthropicResolver implements ProviderResolver
+class AnthropicResolver extends Resolver
 {
-    /**
-     * @param  array<string, mixed>  $config
-     */
-    public function __construct(
-        protected HttpFactory $http,
-        protected Lab $lab,
-        protected array $config,
-    ) {}
-
-    public function provider(): Lab
+    protected function fetch(): Collection
     {
-        return $this->lab;
-    }
-
-    public function configured(): bool
-    {
-        return filled($this->config['key'] ?? null);
-    }
-
-    public function models(): Collection
-    {
-        $baseUrl = rtrim((string) ($this->config['url'] ?? 'https://api.anthropic.com/v1'), '/');
+        /** @var Collection<int, AiModel> $models */
         $models = collect();
         $query = ['limit' => 1000];
 
         do {
-            $response = $this->http
-                ->baseUrl($baseUrl)
+            $response = $this->request()
                 ->withHeaders([
-                    'x-api-key' => (string) $this->config['key'],
+                    'x-api-key' => (string) $this->apiKey(),
                     'anthropic-version' => (string) ($this->config['version'] ?? '2023-06-01'),
                 ])
-                ->acceptJson()
-                ->timeout((int) ($this->config['timeout'] ?? 15))
                 ->get('/models', $query)
                 ->throw();
 
@@ -60,8 +35,7 @@ class AnthropicResolver implements ProviderResolver
                     continue;
                 }
 
-                $models->push(new AiModel(
-                    provider: $this->provider(),
+                $models->push($this->newModel(
                     id: (string) $model['id'],
                     name: $model['display_name'] ?? (string) $model['id'],
                     contextWindow: isset($model['max_input_tokens'])

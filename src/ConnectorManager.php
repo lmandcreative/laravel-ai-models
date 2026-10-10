@@ -7,6 +7,8 @@ namespace LmSomeco\AiModels;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
+use Laravel\Ai\AiManager;
+use Laravel\Ai\Contracts\Providers\Provider;
 use LmSomeco\AiModels\Contracts\Connector;
 use LmSomeco\AiModels\Data\AiModel;
 use LmSomeco\AiModels\Models\AiConnector;
@@ -16,11 +18,13 @@ use LmSomeco\AiModels\Models\AiConnector;
  *
  * Typical usage:
  *
- *   $connector   = $manager->resolve();           // default active connector
- *   $providerKey = $manager->configure($connector); // injects into config at runtime
- *   Laravel\Ai\Facades\Ai::provider($providerKey)->ask(...);
+ *   $connector = $manager->resolve();            // default active connector
+ *   $provider  = $manager->provider($connector); // on-demand laravel/ai provider
  *
- *   // Or use models() to list available models directly:
+ *   // Return it from an agent's provider() method, or pass its name:
+ *   (new SalesCoach)->prompt('...', provider: $provider->name());
+ *
+ *   // List the connector's models:
  *   $models = $manager->models($connector);
  *
  * To substitute your own Eloquent model, set ai-models.connectors.model to any
@@ -34,6 +38,7 @@ class ConnectorManager
      */
     public function __construct(
         protected ModelRegistry $registry,
+        protected AiManager $ai,
         protected string $connectorModel = AiConnector::class,
     ) {}
 
@@ -71,38 +76,36 @@ class ConnectorManager
     }
 
     /**
-     * Register a runtime provider entry in config('ai.providers') for the given
-     * connector and return the provider name to pass to the SDK.
+     * Build an on-demand laravel/ai provider, named "db-{id}", for the given
+     * connector.
      *
-     * The Laravel AI SDK resolves providers from config('ai.providers.*'), so
-     * the decrypted key is injected at runtime rather than stored in .env.
-     * The config mutation is process-local and lasts for the current request.
+     * Nothing is written to config('ai.providers'). The provider serializes
+     * with its configuration encrypted, so it is safe to hand to queued
+     * agents; laravel/ai flushes on-demand providers between queue jobs and
+     * Octane operations, so build it where the work runs (e.g. an agent's
+     * provider() method).
      */
-    public function configure(Connector $connector): string
+    public function provider(Connector $connector): Provider
     {
-        $providerKey = 'db-'.$connector->getConnectorId();
-
-        config([
-            "ai.providers.{$providerKey}" => array_filter([
-                'driver' => $connector->getProvider(),
-                'key' => $connector->getApiKey(),
-                'url' => $connector->getBaseUrl(),
-            ]),
-        ]);
-
-        return $providerKey;
+        return $this->ai->build(array_filter([
+            'name' => 'db-'.$connector->getConnectorId(),
+            'driver' => $connector->getDriver()->value,
+            'key' => $connector->getApiKey(),
+            'url' => $connector->getBaseUrl(),
+        ], filled(...)));
     }
 
     /**
      * List the models available for the given connector.
      *
-     * Delegates to ModelRegistry::connector() which uses a stable per-connector
-     * cache key. Pass $fresh = true to bypass the cache.
+     * Cached under the connector's "db-{id}" provider name; pass
+     * $fresh = true to bypass the cache, or AiModels::refresh('db-{id}') to
+     * drop it.
      *
      * @return Collection<int, AiModel>
      */
     public function models(Connector $connector, bool $fresh = false): Collection
     {
-        return $this->registry->connector($connector, $fresh);
+        return $this->registry->provider($this->provider($connector), $fresh);
     }
 }

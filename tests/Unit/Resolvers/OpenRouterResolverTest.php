@@ -24,8 +24,9 @@ it('maps OpenRouter rich metadata onto the model', function () {
         ]),
     ]);
 
-    $model = (new OpenRouterResolver($http, Lab::OpenRouter, [
+    $model = (new OpenRouterResolver($http, sdkProvider(Lab::OpenRouter, [
         'url' => 'https://openrouter.ai/api/v1',
+    ]), [
         'timeout' => 15,
     ]))->models()->first();
 
@@ -38,9 +39,9 @@ it('maps OpenRouter rich metadata onto the model', function () {
 });
 
 it('is configured without an API key because listing is public', function () {
-    $resolver = new OpenRouterResolver(Http::fake(), Lab::OpenRouter, [
+    $resolver = new OpenRouterResolver(Http::fake(), sdkProvider(Lab::OpenRouter, [
         'url' => 'https://openrouter.ai/api/v1',
-    ]);
+    ]));
 
     expect($resolver->configured())->toBeTrue();
 });
