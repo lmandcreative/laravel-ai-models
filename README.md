@@ -111,7 +111,7 @@ add a resolver — contributions welcome.
 - [Database connectors](docs/database-connectors.md) — optional DB-backed providers via `Ai::build()`
 - [Caching](docs/caching.md) — cache keys, TTL and busting
 - [Extending](docs/extending.md) — writing your own resolver
-- [Upgrading from 1.x](UPGRADE.md)
+- [Upgrading from 1.x](UPGRADE.md) · [2.0 release notes](docs/releases/v2.0.0.md) · [Changelog](CHANGELOG.md)
 
 ## License
 
